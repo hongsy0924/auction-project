@@ -24,7 +24,7 @@ columns = {
     # "colMerge" : "컬럼병합"
 }
 
-db_path = "auction-database/auction_data.db"
+db_path = "auction-database/database/auction_data.db"
 table = "auction_list"
 new_table = "auction_list_cleaned"
 
