@@ -28,9 +28,10 @@ BROWSER_CONFIG: Dict[str, Any] = {
 
 # 파일 설정
 FILE_CONFIG: Dict[str, Any] = {
-    'output_dir': 'output',
-    'cache_dir': 'cache',
+    'output_dir': 'auction-database/output',
+    'cache_dir': 'auction-database/cache',
     'log_dir': 'logs',
+    'database_dir': 'auction-database/database',
     'timestamp_format': '%Y%m%d_%H%M%S'
 }
 

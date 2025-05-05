@@ -256,7 +256,7 @@ class CourtAuctionCrawler:
                 
                 # --- SQLite DB 저장 ---
                 import sqlite3
-                db_file = 'database/auction_data.db'
+                db_file = os.path.join(FILE_CONFIG['database_dir'], 'auction_data.db')
                 conn = sqlite3.connect(db_file)
                 result_df.to_sql('auction_list', conn, if_exists='replace', index=False)
                 conn.close()

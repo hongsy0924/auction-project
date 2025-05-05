@@ -24,32 +24,32 @@ columns = {
     # "colMerge" : "컬럼병합"
 }
 
-db_paths = ["database/auction_data.db", "./auction-viewer/database/auction_data.db"]
+db_path = "auction-database/auction_data.db"
 table = "auction_list"
 new_table = "auction_list_cleaned"
 
-for db_path in db_paths:
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
 
-    # 1. (기존 테이블 삭제) 새 테이블 생성 전에!
-    cur.execute(f'DROP TABLE IF EXISTS {new_table};')
+conn = sqlite3.connect(db_path)
+cur = conn.cursor()
 
-    # 2. 새 테이블 생성
-    col_defs = ", ".join([f'"{v}" TEXT' for v in columns.values()])
-    cur.execute(f'CREATE TABLE IF NOT EXISTS {new_table} ({col_defs});')
+# 1. (기존 테이블 삭제) 새 테이블 생성 전에!
+cur.execute(f'DROP TABLE IF EXISTS {new_table};')
 
-    # 3. 데이터 복사 (컬럼명 매핑)
-    col_select = ", ".join([f'"{k}"' for k in columns.keys()])
-    col_insert = ", ".join([f'"{v}"' for v in columns.values()])
-    cur.execute(f'INSERT INTO {new_table} ({col_insert}) SELECT {col_select} FROM {table};')
+# 2. 새 테이블 생성
+col_defs = ", ".join([f'"{v}" TEXT' for v in columns.values()])
+cur.execute(f'CREATE TABLE IF NOT EXISTS {new_table} ({col_defs});')
 
-    conn.commit()
-    conn.close()
-    print(f"완료! 새 테이블이 {db_path}에 생성되었습니다.")
+# 3. 데이터 복사 (컬럼명 매핑)
+col_select = ", ".join([f'"{k}"' for k in columns.keys()])
+col_insert = ", ".join([f'"{v}"' for v in columns.values()])
+cur.execute(f'INSERT INTO {new_table} ({col_insert}) SELECT {col_select} FROM {table};')
+
+conn.commit()
+conn.close()
+print(f"완료! 새 테이블이 {db_path}에 생성되었습니다.")
 
 # 미리보기 (원하는 경로 하나만)
-conn = sqlite3.connect(db_paths[1])
+conn = sqlite3.connect(db_path)
 df = pd.read_sql_query(f"SELECT * FROM {new_table} LIMIT 5", conn)
 print(df.head())
 conn.close()
