@@ -195,7 +195,7 @@ class CourtAuctionCrawler:
             # 출력 디렉토리 생성
             os.makedirs(FILE_CONFIG['output_dir'], exist_ok=True)
             # DB 디렉토리 생성
-            os.makedirs('database', exist_ok=True)
+            os.makedirs(FILE_CONFIG['database_dir'], exist_ok=True)
             
             # 타임스탬프 생성
             timestamp = datetime.now().strftime(FILE_CONFIG['timestamp_format'])
@@ -256,6 +256,7 @@ class CourtAuctionCrawler:
                 
                 # --- SQLite DB 저장 ---
                 import sqlite3
+                os.makedirs(FILE_CONFIG['database_dir'], exist_ok=True)
                 db_file = os.path.join(FILE_CONFIG['database_dir'], 'auction_data.db')
                 conn = sqlite3.connect(db_file)
                 result_df.to_sql('auction_list', conn, if_exists='replace', index=False)
