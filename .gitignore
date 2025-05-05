@@ -19,4 +19,5 @@ auction-database/cache/
 auction-database/logs/
 auction-database/output/
 *.db
+!auction-database/database/auction_data.db
 *.log
