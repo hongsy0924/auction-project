@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import styles from "./page.module.css";
 
-type AuctionItem = { [key: string]: any };
+type AuctionItem = { [key: string]: string | number };
 
 export default function Home() {
   const [data, setData] = useState<AuctionItem[]>([]);

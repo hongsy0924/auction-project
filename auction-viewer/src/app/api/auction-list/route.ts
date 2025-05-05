@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   const db = new Database(DB_PATH, { readonly: true });
 
   let where = '';
-  let params: any[] = [];
+  let params: string[] = [];
   if (keyword) {
     where = 'WHERE ' + SEARCH_COLUMNS.map(col => `"${col}" LIKE ?`).join(' OR ');
     params = Array(SEARCH_COLUMNS.length).fill(`%${keyword}%`);
