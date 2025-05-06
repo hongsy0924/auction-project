@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prebuild": "echo Running prebuild && node scripts/copy-db.js",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
