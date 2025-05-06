@@ -9,7 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@firebasegen/default-connector": "link:dataconnect-generated/js/default-connector",
     "better-sqlite3": "^11.9.1",
     "next": "^15.3.1",
     "react": "^19.1.0",
