@@ -8,7 +8,7 @@ auction-viewer/.next/
 auction-viewer/cache/
 auction-crawler/database/
 !auction-viewer/database/
-!auction-viewer/database/auction_list.db
+!auction-viewer/database/auction_data.db
 auction-crawler/chromedriver/
 auction-viewer/node_modules/
 chromedriver-mac-arm64/
@@ -18,6 +18,5 @@ logs/
 auction-database/cache/
 auction-database/logs/
 auction-database/output/
-*.db
 !auction-database/database/auction_data.db
 *.log
