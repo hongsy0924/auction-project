@@ -1,0 +1,12 @@
+specVersion: "v1"
+serviceId: "auction-viewer"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "fdcdb"
+      cloudSql:
+        instanceId: "auction-viewer-fdc"
+      # schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]
