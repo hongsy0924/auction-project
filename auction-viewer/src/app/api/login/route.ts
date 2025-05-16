@@ -7,8 +7,8 @@ const JWT_SECRET = 'your-secret-key';
 // In production, use a real database
 const VALID_USERS = [
     {
-        username: 'admin',
-        password: 'password',
+        username: 'admin-test',
+        password: 'admin-test',
         name: '관리자',
         role: 'admin',
     },
@@ -21,7 +21,10 @@ export async function POST(request: NextRequest) {
 
         // Validate input
         if (!username || !password) {
-            return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
+            return NextResponse.json(
+                { error: 'Username and password are required' }, 
+                { status: 400 }
+            );
         }
 
         // Find user
@@ -30,11 +33,13 @@ export async function POST(request: NextRequest) {
         );
 
         if (!user) {
-            return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+            return NextResponse.json(
+                { error: 'Invalid credentials' }, 
+                { status: 401 });
         }
         
 
-        // Check token
+        // Create token
         const token = jwt.sign(
             {
                 username: user.username,
@@ -45,7 +50,7 @@ export async function POST(request: NextRequest) {
             { expiresIn: '8h' }
         );
 
-        // Set the token in the response cookie
+        // Create response
         const response = NextResponse.json({
             user: {
                 username: user.username,
@@ -64,13 +69,11 @@ export async function POST(request: NextRequest) {
         });
 
         return response;
-    } catch (error) {
+        } catch (error) {
         console.error('Login error:', error);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        return NextResponse.json(
+            { error: 'Internal server error' }, 
+            { status: 500 });
     }
-            
-        )
-
-    }
-    
 }
+    
