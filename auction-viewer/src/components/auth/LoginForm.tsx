@@ -2,19 +2,18 @@ import React, { useState } from "react";
 
 interface LoginFormProps {
     onLogin: (username: string, password: string) => Promise<void>;
-    errorMessage?: string;
+    error?: string;
 }
 
-export default function LoginForm({ onLogin, errorMessage }: LoginFormProps) {
+export default function LoginForm({ onLogin, error }: LoginFormProps) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        console.log("LoginForm: handleSubmit called", { username, password });
         setIsLoading(true);
-        setError(null);
 
         try {
          await onLogin(username, password);

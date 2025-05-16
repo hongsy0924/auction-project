@@ -1,10 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import styles from "./page.module.css";
+import { AuthProvider } from "@/context/AuthContext";
+import ProtectedLayout from "@/components/auth/ProtectedLayout";
 
 type AuctionItem = { [key: string]: string | number };
 
-export default function Home() {
+function AuctionList() {
   const [data, setData] = useState<AuctionItem[]>([]);
   const [page, setPage] = useState(1);
   const [perPage] = useState(20);
@@ -195,5 +197,15 @@ export default function Home() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <AuthProvider>
+      <ProtectedLayout>
+        <AuctionList />
+      </ProtectedLayout>
+    </AuthProvider>
   );
 }
