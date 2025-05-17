@@ -83,7 +83,7 @@ function AuctionList() {
   return (
     <div className={styles.page}>
       <div>
-        <h1>경매물건 목록 (총 {total}건) 
+        <h1 style={{ marginTop: 0, marginBottom: 0 }}>목록 (총 {total}건) 
         </h1>
         <div style={{ marginTop: 12, marginBottom: 12 }}>
           <input

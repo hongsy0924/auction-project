@@ -25,14 +25,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       return (
         <div>
           <header style={{ 
-            padding: '12px 20px', 
+            padding: '8px 12px', 
             backgroundColor: '#f8f9fa', 
             borderBottom: '1px solid #e9ecef',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            marginBottom: 0
           }}>
-            <h2 style={{ margin: 0 }}>경매물건 관리시스템</h2>
+            <h2 style={{ margin: 0 }}>관리시스템</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span>{user.username}님</span>
               <button 
@@ -43,6 +44,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                   border: '1px solid #ced4da',
                   borderRadius: '4px',
                   cursor: 'pointer'
+                  
                 }}
               >
                 로그아웃

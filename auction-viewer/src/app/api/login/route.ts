@@ -7,8 +7,8 @@ const JWT_SECRET = 'your-secret-key';
 // In production, use a real database
 const VALID_USERS = [
     {
-        username: 'admin-test',
-        password: 'admin-test',
+        username: 'guamm1',
+        password: '1729hsj!',
         name: '관리자',
         role: 'admin',
     },

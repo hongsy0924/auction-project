@@ -21,45 +21,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        try {
+            setUser(JSON.parse(storedUser));
+        } catch (error) {
+            localStorage.removeItem("user");
+        }
     }
     setLoading(false);
 }, []);
 
 const login = async (username: string, password: string) => {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            if (username === "testuser" && password === "password") {
-                const userData: User = {
-                    username: "testuser",
-                    token: "mockToken",
-                };
-                setUser(userData);
-                localStorage.setItem("user", JSON.stringify(userData));
-                resolve(void 0);
-            } else {
-                reject(new Error("Invalid username or password"));
-            }
-        }, 500);
+    const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
     });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+    }
+    
+    setUser(data.user);
+    localStorage.setItem("user", JSON.stringify(data.user));
 };
 
-const logout = () => {
-    setUser(null);
-    localStorage.removeItem("user");
-};
+    const logout = async () => {
+        await fetch('/api/logout', { method: 'POST' });
+        setUser(null);
+        localStorage.removeItem("user");
+    };
 
-return (
-    <AuthContext.Provider value={{ user, loading, login: login as (username: string, password: string) => Promise<void>, logout }}>
-        {children}
-    </AuthContext.Provider>
-);
-}
+    return (
+        <AuthContext.Provider value={{ user, loading, login, logout }}>
+            {children}
+        </AuthContext.Provider>
+    )
+};
 
 export function useAuth() {
     const context = useContext(AuthContext);
     if (context === undefined) {
-        throw new Error("useAuth must be used within an AuthProvider");
+        throw new Error('useAuth must be used within an AuthProvider');
     }
     return context;
 }
