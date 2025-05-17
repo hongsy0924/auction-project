@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const DB_PATH = path.join(process.cwd(), 'database', 'auction_data.db');
+const DB_PATH = path.join(process.cwd(), 'database/auction_data.db');
 
 console.log('DB_PATH:', DB_PATH);
 
