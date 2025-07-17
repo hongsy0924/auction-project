@@ -1,9 +1,14 @@
 name: Auto Crawl and Deploy
 
+# 워크플로우 비활성화
 on:
-  schedule:
-    - cron: '0 2 * * *'  # 매일 오전 2시 실행
-  workflow_dispatch:  # 수동 실행 가능
+  # schedule:
+  #   - cron: '0 2 * * *'  # 매일 오전 2시 실행
+  # workflow_dispatch:  # 수동 실행 가능
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**'
 
 jobs:
   crawl-and-deploy:
@@ -29,6 +34,7 @@ jobs:
         python court_auction_crawler.py
       env:
         VWORLD_API_KEY: ${{ secrets.VWORLD_API_KEY }}
+        SKIP_VWORLD_API: 'true'
     
     - name: Run SQLite cleaning
       run: |
