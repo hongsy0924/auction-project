@@ -38,12 +38,12 @@ class PNUGenerator:
             logger.error(f"PNU 생성 중 오류: {e}")
             return [None]
 
-    @retry_with_backoff()
+    @retry_with_backoff(max_retries=5, base_delay=2.0)
     async def get_land_use_info(self, pnu: str, session: aiohttp.ClientSession) -> Dict:
         """vworld API로 토지이용정보를 가져옵니다."""
         params = {'key': self.api_key, 'pnu': pnu, 'domain': 'api.vworld.kr', 'format': 'json'}
         try:
-            async with session.get(self.base_url, params=params, ssl=False) as response:
+            async with session.get(self.base_url, params=params, ssl=False, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 response.raise_for_status()
                 data = await response.json()
                 land_uses = [item['prposAreaDstrcCodeNm'] for item in data.get('landUses', {}).get('field', []) if 'prposAreaDstrcCodeNm' in item]
@@ -57,7 +57,6 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
     end_idx = min(start_idx + batch_size, len(df))
     batch_df = df.iloc[start_idx:end_idx]
     
-    tasks = []
     task_info = []
 
     for idx, row in batch_df.iterrows():
@@ -68,25 +67,30 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
             else:
                 task_info.append({'pnu': None, 'original_index': idx, 'error': 'PNU 생성 실패'})
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-        for info in task_info:
-            if info.get('pnu'):
-                tasks.append(generator.get_land_use_info(info['pnu'], session))
-        
-        api_results = await asyncio.gather(*tasks, return_exceptions=True)
+    # GitHub Actions에서는 동시 요청 수를 줄임
+    concurrency_limit = 3  # 동시 요청 수를 3개로 제한
+    semaphore = asyncio.Semaphore(concurrency_limit)
+    
+    async def limited_request(info):
+        async with semaphore:
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+                result = await generator.get_land_use_info(info['pnu'], session)
+                # 요청 간격 추가 (GitHub Actions에서 rate limiting 방지)
+                await asyncio.sleep(0.5)
+                return result
 
     final_results = []
-    api_result_index = 0
+    
+    # 순차적으로 처리하되, 동시 요청 수 제한
     for info in task_info:
         if 'error' in info:
             final_results.append(info)
         else:
-            result = api_results[api_result_index]
-            if isinstance(result, Exception):
-                final_results.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'land_use': None, 'error': str(result)})
-            else:
+            try:
+                result = await limited_request(info)
                 final_results.append({'original_index': info['original_index'], **result})
-            api_result_index += 1
+            except Exception as e:
+                final_results.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'land_use': None, 'error': str(e)})
             
     return final_results
 
