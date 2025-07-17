@@ -18,7 +18,8 @@ CRAWLING_CONFIG: Dict[str, Any] = {
     'page_size': int(os.getenv('PAGE_SIZE', '20')),
     'batch_size': int(os.getenv('BATCH_SIZE', '50')),
     'request_delay': float(os.getenv('REQUEST_DELAY', '1')),
-    'concurrency_limit': int(os.getenv('CONCURRENCY_LIMIT', '10'))
+    'concurrency_limit': int(os.getenv('CONCURRENCY_LIMIT', '10')),
+    'max_retries': int(os.getenv('MAX_RETRIES', '3'))
 }
 
 # 브라우저 설정
