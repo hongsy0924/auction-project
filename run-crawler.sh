@@ -2,6 +2,10 @@
 
 echo "🚀 경매 크롤러 실행 및 배포 시작..."
 
+# 가상환경 활성화
+echo "🐍 가상환경 활성화 중..."
+source .venv/bin/activate
+
 # 1. 크롤러 실행
 echo "📊 경매 데이터 크롤링 중..."
 cd auction-crawler
@@ -26,6 +30,9 @@ else
 fi
 
 cd ..
+
+# 가상환경 비활성화
+deactivate
 
 # 3. 변경사항 커밋
 echo "📝 변경사항 커밋 중..."
