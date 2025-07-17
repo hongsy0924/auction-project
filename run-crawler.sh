@@ -2,14 +2,22 @@
 
 echo "🚀 경매 크롤러 실행 및 배포 시작..."
 
-# 가상환경 활성화
-echo "🐍 가상환경 활성화 중..."
-source .venv/bin/activate
+# 현재 디렉토리 확인
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "📁 스크립트 디렉토리: $SCRIPT_DIR"
+
+# 가상환경의 Python 직접 사용 (절대 경로)
+PYTHON_PATH="$SCRIPT_DIR/.venv/bin/python"
+
+# Python 경로 확인
+echo "🔍 Python 경로 확인 중..."
+echo "Python 경로: $PYTHON_PATH"
+$PYTHON_PATH --version
 
 # 1. 크롤러 실행
 echo "📊 경매 데이터 크롤링 중..."
-cd auction-crawler
-python court_auction_crawler.py
+cd "$SCRIPT_DIR/auction-crawler"
+$PYTHON_PATH court_auction_crawler.py
 
 if [ $? -eq 0 ]; then
     echo "✅ 크롤링 완료!"
@@ -20,7 +28,7 @@ fi
 
 # 2. SQLite 정리
 echo "🗄️ SQLite 데이터 정리 중..."
-python sqlite_cleaning.py
+$PYTHON_PATH sqlite_cleaning.py
 
 if [ $? -eq 0 ]; then
     echo "✅ SQLite 정리 완료!"
@@ -29,10 +37,7 @@ else
     exit 1
 fi
 
-cd ..
-
-# 가상환경 비활성화
-deactivate
+cd "$SCRIPT_DIR"
 
 # 3. 변경사항 커밋
 echo "📝 변경사항 커밋 중..."
@@ -49,7 +54,7 @@ fi
 
 # 4. Fly.io 배포
 echo "🚀 Fly.io 배포 중..."
-cd auction-viewer
+cd "$SCRIPT_DIR/auction-viewer"
 flyctl deploy --remote-only
 
 if [ $? -eq 0 ]; then
