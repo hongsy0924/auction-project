@@ -10,7 +10,7 @@ API_CONFIG: Dict[str, Any] = {
     'base_url': "https://www.courtauction.go.kr/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml",
     'api_url': "https://www.courtauction.go.kr/pgj/pgjsearch/searchControllerMain.on",
     'vworld_url': "https://api.vworld.kr/ned/data/getLandUseAttr",
-    'vworld_api_key': os.getenv('VWORLD_API_KEY', 'your_vworld_api_key_here')
+    'vworld_api_key': "98CFE216-411C-3151-8C9A-5B3997CC4CCD"
 }
 
 # 크롤링 설정
