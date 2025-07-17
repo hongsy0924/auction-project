@@ -1,38 +1,40 @@
 import os
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 # API 설정
 API_CONFIG: Dict[str, Any] = {
-    'base_url': "https://www.courtauction.go.kr/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml",
-    'api_url': "https://www.courtauction.go.kr/pgj/pgjsearch/searchControllerMain.on",
-    'vworld_url': "https://api.vworld.kr/ned/data/getLandUseAttr",
-    'vworld_api_key': "98CFE216-411C-3151-8C9A-5B3997CC4CCD"
+    'base_url': 'https://www.courtauction.go.kr',
+    'api_url': 'https://www.courtauction.go.kr/RetrieveRealEstateList.laf',
+    'vworld_url': 'https://api.vworld.kr/req/data',
+    'vworld_api_key': os.getenv('VWORLD_API_KEY', 'your_vworld_api_key_here')
 }
 
 # 크롤링 설정
 CRAWLING_CONFIG: Dict[str, Any] = {
-    'concurrent_pages': 10,  # 동시에 가져올 페이지 수
-    'page_size': 40,  # 한 페이지당 항목 수
-    'retry_delay': 5,  # 재시도 대기 시간 (초)
-    'request_delay': 1,  # 요청 간 대기 시간 (초)
-    'max_retries': 3,  # 최대 재시도 횟수
-    'batch_size': 200  # PNU 처리 배치 크기
+    'page_size': int(os.getenv('PAGE_SIZE', '20')),
+    'batch_size': int(os.getenv('BATCH_SIZE', '50')),
+    'request_delay': float(os.getenv('REQUEST_DELAY', '1')),
+    'concurrency_limit': int(os.getenv('CONCURRENCY_LIMIT', '10'))
 }
 
 # 브라우저 설정
 BROWSER_CONFIG: Dict[str, Any] = {
-    'headless': True,
+    'headless': os.getenv('HEADLESS', 'true').lower() == 'true',
     'window_size': (1920, 1080),
-    'timeout': 20  # 초
+    'timeout': int(os.getenv('TIMEOUT', '30'))
 }
 
 # 파일 설정
 FILE_CONFIG: Dict[str, Any] = {
-    'output_dir': 'auction-database/output',
+    'output_dir': os.getenv('OUTPUT_DIR', 'output'),
     'cache_dir': 'auction-database/cache',
     'log_dir': 'logs',
-    'database_dir': 'auction-database/database',
-    'timestamp_format': '%Y%m%d_%H%M%S'
+    'database_dir': os.getenv('DATABASE_DIR', '../auction-viewer/database'),
+    'timestamp_format': os.getenv('TIMESTAMP_FORMAT', '%Y%m%d_%H%M%S')
 }
 
 # 로깅 설정

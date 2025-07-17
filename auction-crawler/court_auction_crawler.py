@@ -91,8 +91,10 @@ class CourtAuctionCrawler:
                 result_df.to_excel(output_file, index=False)
                 logger.info(f"경매 목록 {len(all_results)}건 저장 완료: {output_file}")
                 
+                # --- SQLite DB 저장 ---
                 import sqlite3
-                db_file = os.path.join(FILE_CONFIG['database_dir'], 'auction_data.db')
+                db_file = os.path.join("../auction-viewer/database", 'auction_data.db')
+                os.makedirs(os.path.dirname(db_file), exist_ok=True)
                 with sqlite3.connect(db_file) as conn:
                     result_df.to_sql('auction_list', conn, if_exists='replace', index=False)
                 logger.info(f"DB 저장 완료: {db_file}")
