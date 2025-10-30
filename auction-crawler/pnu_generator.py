@@ -39,18 +39,24 @@ class PNUGenerator:
             return [None]
 
     @retry_with_backoff()
-    async def get_land_use_info(self, pnu: str, session: aiohttp.ClientSession) -> Dict:
-        """vworld API로 토지이용정보를 가져옵니다."""
+    async def get_land_use_info(self, pnu: str, session: aiohttp.ClientSession, cnflcAt: Optional[str] = None) -> Dict:
+        """vworld API로 토지이용정보를 가져옵니다. cnflcAt이 주어지면 해당 옵션으로 조회합니다."""
         params = {'key': self.api_key, 'pnu': pnu, 'domain': 'api.vworld.kr', 'format': 'json'}
+        if cnflcAt:
+            params['cnflcAt'] = cnflcAt
         try:
             async with session.get(self.base_url, params=params, ssl=False) as response:
                 response.raise_for_status()
                 data = await response.json()
                 land_uses = [item['prposAreaDstrcCodeNm'] for item in data.get('landUses', {}).get('field', []) if 'prposAreaDstrcCodeNm' in item]
-                return {'pnu': pnu, 'land_use': ', '.join(land_uses) if land_uses else None}
+                return {
+                    'pnu': pnu,
+                    'cnflcAt': cnflcAt,
+                    'land_use': ', '.join(land_uses) if land_uses else None
+                }
         except Exception as e:
-            logger.error(f"토지이용정보 조회 실패 (PNU: {pnu}): {e}")
-            return {'pnu': pnu, 'land_use': None, 'error': str(e)}
+            logger.error(f"토지이용정보 조회 실패 (PNU: {pnu}, cnflcAt: {cnflcAt}): {e}")
+            return {'pnu': pnu, 'cnflcAt': cnflcAt, 'land_use': None, 'error': str(e)}
 
 async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: int, batch_size: int) -> List[Dict]:
     """배치 단위로 PNU 생성 및 토지이용정보 조회"""
@@ -68,25 +74,54 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
             else:
                 task_info.append({'pnu': None, 'original_index': idx, 'error': 'PNU 생성 실패'})
 
+    # 세 가지 cnflcAt 값에 대한 호출을 준비
+    cnflc_values = ["1", "2", "3"]
+    task_meta: List[Dict] = []
+
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
         for info in task_info:
             if info.get('pnu'):
-                tasks.append(generator.get_land_use_info(info['pnu'], session))
+                for cval in cnflc_values:
+                    tasks.append(generator.get_land_use_info(info['pnu'], session, cval))
+                    task_meta.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'cnflcAt': cval})
         
         api_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    final_results = []
-    api_result_index = 0
+    # 결과를 original_index, pnu 기준으로 집계하여 land_use_1/2/3 필드로 합치기
+    aggregated: Dict[str, Dict] = {}
+    for meta, res in zip(task_meta, api_results):
+        key = f"{meta['original_index']}|{meta['pnu']}"
+        if key not in aggregated:
+            aggregated[key] = {
+                'original_index': meta['original_index'],
+                'pnu': meta['pnu'],
+                'land_use_1': None,
+                'land_use_2': None,
+                'land_use_3': None
+            }
+        # 에러인 경우는 건너뛰고, 필요하면 이후에 별도 처리 가능
+        if isinstance(res, Exception):
+            continue
+        land_value = None if res is None else res.get('land_use')
+        if meta['cnflcAt'] == '1':
+            aggregated[key]['land_use_1'] = land_value
+        elif meta['cnflcAt'] == '2':
+            aggregated[key]['land_use_2'] = land_value
+        elif meta['cnflcAt'] == '3':
+            aggregated[key]['land_use_3'] = land_value
+
+    # PNU 생성 실패 등의 케이스 포함하여 최종 결과 배열 구성
+    final_results: List[Dict] = []
+    success_keys = set(aggregated.keys())
     for info in task_info:
         if 'error' in info:
             final_results.append(info)
         else:
-            result = api_results[api_result_index]
-            if isinstance(result, Exception):
-                final_results.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'land_use': None, 'error': str(result)})
+            key = f"{info['original_index']}|{info['pnu']}"
+            if key in success_keys:
+                final_results.append(aggregated[key])
             else:
-                final_results.append({'original_index': info['original_index'], **result})
-            api_result_index += 1
+                final_results.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'land_use_1': None, 'land_use_2': None, 'land_use_3': None, 'error': 'API 응답 없음'})
             
     return final_results
 

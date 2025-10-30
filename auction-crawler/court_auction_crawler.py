@@ -65,45 +65,69 @@ class CourtAuctionCrawler:
             timestamp = datetime.datetime.now().strftime(FILE_CONFIG['timestamp_format'])
             df = pd.DataFrame(data)
             
-            generator = PNUGenerator()
+            # 환경변수로 VWorld API 호출 여부 제어
+            skip_vworld_api = os.getenv('SKIP_VWORLD_API', 'false').lower() == 'true'
             
-            all_results, failed_cases = [], []
-            batch_size = CRAWLING_CONFIG['batch_size']
-            
-            for start_idx in tqdm(range(0, len(df), batch_size), desc="토지이용정보 조회 중"):
-                try:
-                    batch_results = await process_batch(generator, df, start_idx, batch_size)
-                    for result in batch_results:
-                        original_data = df.iloc[result['original_index']].to_dict()
-                        if result.get('error'):
-                            failed_cases.append({**original_data, 'error': result['error']})
-                        else:
-                            all_results.append({**original_data, 'pnu': result.get('pnu', ''), 'land_use': result.get('land_use', '')})
-                    await asyncio.sleep(CRAWLING_CONFIG['request_delay'])
-                except Exception as e:
-                    logger.error(f"배치 처리 중 오류 발생: {e}")
-                    for idx in range(start_idx, min(start_idx + batch_size, len(df))):
-                        failed_cases.append({**df.iloc[idx].to_dict(), 'error': str(e)})
-
-            if all_results:
-                result_df = pd.DataFrame(all_results)
-                output_file = os.path.join(FILE_CONFIG['output_dir'], f"auction_list_{timestamp}.xlsx")
-                result_df.to_excel(output_file, index=False)
-                logger.info(f"경매 목록 {len(all_results)}건 저장 완료: {output_file}")
+            if skip_vworld_api:
+                logger.info("VWorld API 호출을 건너뛰고 기본 경매 데이터만 저장합니다.")
+                result_df = df
+            else:
+                generator = PNUGenerator()
                 
-                # --- SQLite DB 저장 ---
-                import sqlite3
-                db_file = os.path.join("../auction-viewer/database", 'auction_data.db')
-                os.makedirs(os.path.dirname(db_file), exist_ok=True)
-                with sqlite3.connect(db_file) as conn:
-                    result_df.to_sql('auction_list', conn, if_exists='replace', index=False)
-                logger.info(f"DB 저장 완료: {db_file}")
+                all_results, failed_cases = [], []
+                batch_size = CRAWLING_CONFIG['batch_size']
+                
+                for start_idx in tqdm(range(0, len(df), batch_size), desc="토지이용정보 조회 중"):
+                    try:
+                        batch_results = await process_batch(generator, df, start_idx, batch_size)
+                        for result in batch_results:
+                            original_data = df.iloc[result['original_index']].to_dict()
+                            if result.get('error') and not any([result.get('land_use_1'), result.get('land_use_2'), result.get('land_use_3')]):
+                                failed_cases.append({**original_data, 'error': result['error']})
+                            else:
+                                land_use_1 = result.get('land_use_1', '')
+                                land_use_2 = result.get('land_use_2', '')
+                                land_use_3 = result.get('land_use_3', '')
+                                # 합친 필드도 참고용으로 제공
+                                combined = ', '.join([v for v in [land_use_1, land_use_2, land_use_3] if v])
+                                all_results.append({
+                                    **original_data,
+                                    'pnu': result.get('pnu', ''),
+                                    'land_use_1': land_use_1,
+                                    'land_use_2': land_use_2,
+                                    'land_use_3': land_use_3,
+                                    'land_use_combined': combined
+                                })
+                        await asyncio.sleep(CRAWLING_CONFIG['request_delay'])
+                    except Exception as e:
+                        logger.error(f"배치 처리 중 오류 발생: {e}")
+                        for idx in range(start_idx, min(start_idx + batch_size, len(df))):
+                            failed_cases.append({**df.iloc[idx].to_dict(), 'error': str(e)})
 
-            if failed_cases:
-                failed_df = pd.DataFrame(failed_cases)
-                failed_file = os.path.join(FILE_CONFIG['output_dir'], f"failed_cases_{timestamp}.xlsx")
-                failed_df.to_excel(failed_file, index=False)
-                logger.warning(f"실패 케이스 {len(failed_cases)}건 저장 완료: {failed_file}")
+                if all_results:
+                    result_df = pd.DataFrame(all_results)
+                else:
+                    logger.warning("토지이용정보 조회 결과가 없어 기본 데이터만 저장합니다.")
+                    result_df = df
+
+                if failed_cases:
+                    failed_df = pd.DataFrame(failed_cases)
+                    failed_file = os.path.join(FILE_CONFIG['output_dir'], f"failed_cases_{timestamp}.xlsx")
+                    failed_df.to_excel(failed_file, index=False)
+                    logger.warning(f"실패 케이스 {len(failed_cases)}건 저장 완료: {failed_file}")
+            
+            # 결과 저장
+            output_file = os.path.join(FILE_CONFIG['output_dir'], f"auction_list_{timestamp}.xlsx")
+            result_df.to_excel(output_file, index=False)
+            logger.info(f"경매 목록 {len(result_df)}건 저장 완료: {output_file}")
+            
+            # --- SQLite DB 저장 ---
+            import sqlite3
+            db_file = os.path.join("../auction-viewer/database", 'auction_data.db')
+            os.makedirs(os.path.dirname(db_file), exist_ok=True)
+            with sqlite3.connect(db_file) as conn:
+                result_df.to_sql('auction_list', conn, if_exists='replace', index=False)
+            logger.info(f"DB 저장 완료: {db_file}")
             
         except Exception as e:
             logger.error(f"데이터 저장 중 오류 발생: {e}")
