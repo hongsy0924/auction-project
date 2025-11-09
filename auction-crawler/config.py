@@ -10,17 +10,19 @@ API_CONFIG: Dict[str, Any] = {
     'base_url': "https://www.courtauction.go.kr/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml",
     'api_url': "https://www.courtauction.go.kr/pgj/pgjsearch/searchControllerMain.on",
     'vworld_url': "https://api.vworld.kr/ned/data/getLandUseAttr",
-    'vworld_api_key': "98CFE216-411C-3151-8C9A-5B3997CC4CCD"
+    'vworld_api_key': "1112376B-7285-3920-8B0D-D4F6DF6DD34B"
 }
 
 # 크롤링 설정
 CRAWLING_CONFIG: Dict[str, Any] = {
-    'page_size': int(os.getenv('PAGE_SIZE', '20')),
+    'page_size': int(os.getenv('PAGE_SIZE', '40')),
     'batch_size': int(os.getenv('BATCH_SIZE', '50')),
-    'request_delay': float(os.getenv('REQUEST_DELAY', '1')),
-    'concurrency_limit': int(os.getenv('CONCURRENCY_LIMIT', '10')),
+    'request_delay': float(os.getenv('REQUEST_DELAY', '1.5')),  # 각 요청 사이 딜레이 (초) - 1.5초로 증가
+    'concurrency_limit': int(os.getenv('CONCURRENCY_LIMIT', '1')),  # 동시 요청 수를 1로 줄임 (순차 처리)
+    'batch_delay': float(os.getenv('BATCH_DELAY', '3')),  # 배치 사이 딜레이 (초) - 3초로 증가
     'max_retries': int(os.getenv('MAX_RETRIES', '3')),
-    'retry_delay': float(os.getenv('RETRY_DELAY', '2'))
+    'retry_delay': float(os.getenv('RETRY_DELAY', '10')),  # 재시도 시 더 긴 딜레이 - 10초로 증가
+    'blocked_wait_time': float(os.getenv('BLOCKED_WAIT_TIME', '120'))  # 차단 감지 시 대기 시간 (초) - 120초로 증가
 }
 
 # 브라우저 설정

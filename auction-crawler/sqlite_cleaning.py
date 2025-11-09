@@ -10,8 +10,9 @@ columns = {
     "daepyoLotno": "지번",
     "gamevalAmt": "감정평가액",
     "notifyMinmaePrice1": "최저매각가격",
-    "notifyMinmaePricerate2": "%",
-    "mulbigo": "비고",
+    # 주의: 원본 스키마 대소문자 일치 필요
+    "notifyMinmaePriceRate2": "%",
+    "mulBigo": "비고",
     "maeGiil": "매각기일",
     "yuchalCnt": "유찰회수",
     "maegyuljgiil": "매각결정기일",
