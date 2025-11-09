@@ -33,9 +33,26 @@ function AuctionList() {
   }, [page, perPage, appliedKeyword]);
 
   if (loading) return <div>Loading...</div>;
-  if (!data.length) return <div>No data</div>;
 
-  const columns = data.length > 0 ? Object.keys(data[0]) : [];
+  // 표시할 컬럼 목록 (순서대로 표시됨)
+  const visibleColumns = [
+    "사건번호",
+    "물건종류",
+    "지목",
+    "주소",
+    "감정평가액",
+    "최저매각가격",
+    "%",
+    "매각기일",
+    "면적",
+    "포함",
+    "저촉",
+    "접합",
+  ];
+
+  // 데이터에서 실제 존재하는 컬럼만 필터링
+  const allAvailableColumns = data.length > 0 ? Object.keys(data[0]) : [];
+  const columns = visibleColumns.filter(col => allAvailableColumns.includes(col));
 
   const totalPages = Math.ceil(total / perPage);
   const maxPageButtons = 20;
@@ -43,8 +60,8 @@ function AuctionList() {
   const startPage = currentBlock * maxPageButtons + 1;
   const endPage = Math.min(startPage + maxPageButtons - 1, totalPages);
 
-  // 프리징할 컬럼명(순서 중요)
-  const frozenColumnNames = ["사건번호", "물건종류", "지목", "주소", "지번", "감정평가액", "최저매각가격", "%"];
+  // 프리징할 컬럼명(순서 중요) - 실제 표시되는 컬럼만 포함
+  const frozenColumnNames = ["사건번호", "물건종류", "지목", "주소", "감정평가액", "최저매각가격", "%"];
 
   // 각 컬럼별 고정 너비
   const columnWidths: { [key: string]: number } = {
@@ -58,12 +75,15 @@ function AuctionList() {
     "%": 30,
   };
 
-  // stickyColumns의 left 값을 누적합으로 계산
+  // stickyColumns의 left 값을 누적합으로 계산 (실제 표시되는 컬럼만)
   const stickyColumns: { [key: string]: number } = {};
   let left = 0;
   for (const col of frozenColumnNames) {
-    stickyColumns[col] = left;
-    left += columnWidths[col] || 100; // 기본값 100
+    // 실제 표시되는 컬럼에만 sticky 적용
+    if (columns.includes(col)) {
+      stickyColumns[col] = left;
+      left += columnWidths[col] || 100; // 기본값 100
+    }
   }
 
   function highlightKeyword(text: string, keyword: string) {
@@ -107,9 +127,41 @@ function AuctionList() {
           >
             검색
           </button>
+          {appliedKeyword && (
+            <button
+              onClick={() => {
+                setPage(1);
+                setSearchKeyword("");
+                setAppliedKeyword("");
+              }}
+              style={{ marginLeft: 8 }}
+            >
+              검색 초기화
+            </button>
+          )}
         </div>
-        <div style={{ overflow: "auto", maxHeight: "70vh", maxWidth: "100vw" }}>
-          <table style={{ borderCollapse: "collapse", minWidth: 1200, fontSize: 12 }}>
+        {!data.length ? (
+          <div style={{ padding: "40px", textAlign: "center", fontSize: 16 }}>
+            검색 결과가 없습니다.
+            {appliedKeyword && (
+              <div style={{ marginTop: 12 }}>
+                <button
+                  onClick={() => {
+                    setPage(1);
+                    setSearchKeyword("");
+                    setAppliedKeyword("");
+                  }}
+                  style={{ padding: "8px 16px", fontSize: 14 }}
+                >
+                  검색 초기화
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div style={{ overflow: "auto", maxHeight: "70vh", maxWidth: "100vw" }}>
+              <table style={{ borderCollapse: "collapse", minWidth: 1200, fontSize: 12 }}>
             <thead>
               <tr>
                 {columns.map((col) => {
@@ -139,11 +191,16 @@ function AuctionList() {
                 <tr key={i}>
                   {columns.map((col, j) => {
                     let value = row[col];
-                    if (numberColumns.includes(col) && value != null && !isNaN(Number(value))) {
-                      value = Number(value).toLocaleString();
-                    }
-                    if (col === "%") {
-                      value = `${value}%`;
+                    // null 또는 undefined를 "-"로 변환
+                    if (value == null || value === "") {
+                      value = "-";
+                    } else {
+                      if (numberColumns.includes(col) && !isNaN(Number(value))) {
+                        value = Number(value).toLocaleString();
+                      }
+                      if (col === "%") {
+                        value = `${value}%`;
+                      }
                     }
                     return (
                       <td key={j} style={{ position: "sticky", padding: "8px 12px" }}>
@@ -155,46 +212,48 @@ function AuctionList() {
               ))}
             </tbody>
           </table>
-        </div>
-        <div style={{ marginTop: 16, display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-          {page > 1 && (
-            <button onClick={() => setPage(page - 1)} style={{ marginRight: 8 }}>
-              이전
-            </button>
-          )}
-          {Array.from({ length: endPage - startPage + 1 }, (_, i) => {
-            const pageNum = startPage + i;
-            const isCurrent = pageNum === page;
-            return (
-              <button
-                key={pageNum}
-                onClick={() => setPage(pageNum)}
-                style={{
-                  margin: "0 2px",
-                  padding: "4px 10px",
-                  fontWeight: isCurrent ? "bold" : "normal",
-                  textDecoration: isCurrent ? "underline" : "none",
-                  color: isCurrent ? "#fff" : "#333",
-                  background: isCurrent ? "#0070f3" : "#f0f0f0",
-                  border: isCurrent ? "2px solid #0070f3" : "1px solid #ccc",
-                  borderRadius: 4,
-                  cursor: isCurrent ? "default" : "pointer"
-                }}
-                disabled={isCurrent}
-              >
-                {pageNum}
+          </div>
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", flexWrap: "wrap" }}>
+            {page > 1 && (
+              <button onClick={() => setPage(page - 1)} style={{ marginRight: 8 }}>
+                이전
               </button>
-            );
-          })}
-          {endPage < totalPages && (
-            <span style={{ margin: "0 4px" }}>...</span>
-          )}
-          {page < totalPages && (
-            <button onClick={() => setPage(page + 1)} style={{ marginLeft: 8 }}>
-              다음
-            </button>
-          )}
-        </div>
+            )}
+            {Array.from({ length: endPage - startPage + 1 }, (_, i) => {
+              const pageNum = startPage + i;
+              const isCurrent = pageNum === page;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  style={{
+                    margin: "0 2px",
+                    padding: "4px 10px",
+                    fontWeight: isCurrent ? "bold" : "normal",
+                    textDecoration: isCurrent ? "underline" : "none",
+                    color: isCurrent ? "#fff" : "#333",
+                    background: isCurrent ? "#0070f3" : "#f0f0f0",
+                    border: isCurrent ? "2px solid #0070f3" : "1px solid #ccc",
+                    borderRadius: 4,
+                    cursor: isCurrent ? "default" : "pointer"
+                  }}
+                  disabled={isCurrent}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            {endPage < totalPages && (
+              <span style={{ margin: "0 4px" }}>...</span>
+            )}
+            {page < totalPages && (
+              <button onClick={() => setPage(page + 1)} style={{ marginLeft: 8 }}>
+                다음
+              </button>
+            )}
+          </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import pandas as pd
 from typing import List, Dict, Optional
 import aiohttp
 import asyncio
+import re
 from tqdm import tqdm
 from config import API_CONFIG
 from utils import logger, retry_with_backoff
@@ -11,28 +12,39 @@ class PNUGenerator:
         self.base_url = API_CONFIG['vworld_url']
         self.api_key = API_CONFIG['vworld_api_key']
         
-    def create_pnu(self, daepyoSidoCd: str, daepyoSiguCd: str, daepyoDongCd: str, daepyoRdCd: str, daepyoLotno: str) -> List[Optional[str]]:
+    def create_pnu(self, daepyoSidoCd: str, daepyoSiguCd: str, daepyoDongCd: str, daepyoRdCd: Optional[str], daepyoLotno: str) -> List[Optional[str]]:
         """PNU(필지고유번호)를 생성합니다."""
         try:
-            pnu_prefix = f"{str(daepyoSidoCd).zfill(2)}{str(daepyoSiguCd).zfill(3)}{str(daepyoDongCd).zfill(3)}{str(daepyoRdCd).zfill(2)}"
-            if len(pnu_prefix) != 10 or not pnu_prefix.isdigit(): return [None]
+            # 원본 길이 검증 (zfill 전에 검증)
+            if len(str(daepyoSidoCd)) != 2 or not str(daepyoSidoCd).isdigit():
+                return [None]
+            if len(str(daepyoSiguCd)) != 3 or not str(daepyoSiguCd).isdigit():
+                return [None]
+            if len(str(daepyoDongCd)) != 3 or not str(daepyoDongCd).isdigit():
+                return [None]
+            
+            riCd = str(daepyoRdCd or "00").zfill(2)
+            pnu_prefix = f"{str(daepyoSidoCd).zfill(2)}{str(daepyoSiguCd).zfill(3)}{str(daepyoDongCd).zfill(3)}{riCd}"
+            if len(pnu_prefix) != 10 or not pnu_prefix.isdigit():
+                return [None]
             
             lot_numbers = [num.strip() for num in str(daepyoLotno).split('^') if num.strip()]
-            if not lot_numbers: return [None]
+            if not lot_numbers:
+                return [None]
             
             pnu_list = []
-            for lot_number in lot_numbers:
-                land_type = "2" if "산" in lot_number else "1"
-                lot_number_clean = lot_number.replace("산", "")
-                parts = lot_number_clean.split('-')
-                main_number = ''.join(filter(str.isdigit, parts[0]))
-                if not main_number: continue
-                sub_number = "0000"
-                if len(parts) > 1:
-                    sub_number = ''.join(filter(str.isdigit, parts[1]))
-                    if not sub_number: sub_number = "0000"
-                pnu = f"{pnu_prefix}{land_type}{main_number.zfill(4)}{sub_number.zfill(4)}"
-                if len(pnu) == 19: pnu_list.append(pnu)
+            for num in lot_numbers:
+                land_type = "2" if "산" in num else "1"
+                # "산1-3", "산 1-3", "산-1" 등 처리
+                num_clean = re.sub(r"산\s*-*\s*", "", num)
+                parts = re.split(r"[-\s]", num_clean)
+                main = ''.join(filter(str.isdigit, parts[0])) if parts else ""
+                sub = ''.join(filter(str.isdigit, parts[1])) if len(parts) > 1 else "0000"
+                if not main:
+                    continue
+                pnu = f"{pnu_prefix}{land_type}{main.zfill(4)}{sub.zfill(4)}"
+                if len(pnu) == 19:
+                    pnu_list.append(pnu)
             return pnu_list if pnu_list else [None]
         except Exception as e:
             logger.error(f"PNU 생성 중 오류: {e}")
@@ -67,7 +79,9 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
     task_info = []
 
     for idx, row in batch_df.iterrows():
-        pnus = generator.create_pnu(row['daepyoSidoCd'], row['daepyoSiguCd'], row['daepyoDongCd'], row['daepyoRdCd'], row['daepyoLotno'])
+        # riCd가 없거나 빈 값인 경우 None으로 처리
+        riCd = row.get('daepyoRdCd') if pd.notna(row.get('daepyoRdCd')) and str(row.get('daepyoRdCd')).strip() else None
+        pnus = generator.create_pnu(row['daepyoSidoCd'], row['daepyoSiguCd'], row['daepyoDongCd'], riCd, row['daepyoLotno'])
         for pnu in pnus:
             if pnu:
                 task_info.append({'pnu': pnu, 'original_index': idx})
@@ -99,7 +113,7 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
                 'land_use_2': None,
                 'land_use_3': None
             }
-        # 에러인 경우는 건너뛰고, 필요하면 이후에 별도 처리 가능
+        # 에러인 경우는 건너뛰고, 빈 값으로 유지
         if isinstance(res, Exception):
             continue
         land_value = None if res is None else res.get('land_use')
@@ -119,7 +133,8 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
         else:
             key = f"{info['original_index']}|{info['pnu']}"
             if key in success_keys:
-                final_results.append(aggregated[key])
+                entry = aggregated[key]
+                final_results.append(entry)
             else:
                 final_results.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'land_use_1': None, 'land_use_2': None, 'land_use_3': None, 'error': 'API 응답 없음'})
             
