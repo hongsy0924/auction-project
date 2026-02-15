@@ -20,3 +20,6 @@ auction-database/logs/
 auction-database/output/
 !auction-database/database/auction_data.db
 *.log
+.env
+.env.*
+!.env.example

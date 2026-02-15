@@ -1,50 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
-// In production, store this securely in environment variables
-const JWT_SECRET = 'your-secret-key';
+// JWT secret from environment variable (required)
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// In production, use a real database
-const VALID_USERS = [
-    {
-        username: 'guamm1',
-        password: '1729hsj!',
-        name: '관리자',
-        role: 'admin',
-    },
-];
+if (!JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is not set');
+}
+
+// Admin credentials from environment variables
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || '';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
+const ADMIN_NAME = process.env.ADMIN_NAME || '관리자';
+
+/**
+ * Simple SHA-256 password verification.
+ * To generate a hash: echo -n "your-password" | shasum -a 256
+ */
+function verifyPassword(inputPassword: string, storedHash: string): boolean {
+    const inputHash = crypto.createHash('sha256').update(inputPassword).digest('hex');
+    return crypto.timingSafeEqual(
+        Buffer.from(inputHash, 'hex'),
+        Buffer.from(storedHash, 'hex')
+    );
+}
 
 export async function POST(request: NextRequest) {
     try {
+        if (!JWT_SECRET) {
+            return NextResponse.json(
+                { error: 'Server configuration error' },
+                { status: 500 }
+            );
+        }
+
         const body = await request.json();
         const { username, password } = body;
 
         // Validate input
         if (!username || !password) {
             return NextResponse.json(
-                { error: 'Username and password are required' }, 
+                { error: 'Username and password are required' },
                 { status: 400 }
             );
         }
 
-        // Find user
-        const user = VALID_USERS.find(u =>
-            u.username === username && u.password === password
-        );
+        // Verify credentials
+        const isValidUser = username === ADMIN_USERNAME
+            && ADMIN_PASSWORD_HASH
+            && verifyPassword(password, ADMIN_PASSWORD_HASH);
 
-        if (!user) {
+        if (!isValidUser) {
             return NextResponse.json(
-                { error: 'Invalid credentials' }, 
-                { status: 401 });
+                { error: 'Invalid credentials' },
+                { status: 401 }
+            );
         }
-        
 
         // Create token
         const token = jwt.sign(
             {
-                username: user.username,
-                name: user.name,
-                role: user.role,
+                username: ADMIN_USERNAME,
+                name: ADMIN_NAME,
+                role: 'admin',
             },
             JWT_SECRET,
             { expiresIn: '8h' }
@@ -53,8 +72,8 @@ export async function POST(request: NextRequest) {
         // Create response
         const response = NextResponse.json({
             user: {
-                username: user.username,
-                role: user.role,
+                username: ADMIN_USERNAME,
+                role: 'admin',
             }
         });
 
@@ -69,11 +88,11 @@ export async function POST(request: NextRequest) {
         });
 
         return response;
-        } catch (error) {
+    } catch (error) {
         console.error('Login error:', error);
         return NextResponse.json(
-            { error: 'Internal server error' }, 
-            { status: 500 });
+            { error: 'Internal server error' },
+            { status: 500 }
+        );
     }
 }
-    
