@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./auction-crawler
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # Install dev dependencies (ruff, mypy, pytest, etc)
+        # Assuming they are in requirements.txt or we install them manually
+        # If pyproject.toml defines optional deps, we can use pip install .[dev]
+        # For now, let's explicit install if not in requirements.txt (but they SHOULD be in requirements.txt based on my observation of list_dir not showing requirements.txt content, but implied by Makefile plan)
+        # Actually pyproject.toml has them in [project.optional-dependencies] dev.
+        pip install .[dev]
+
+    - name: Lint with Ruff
+      run: ruff check .
+
+    - name: Type check with Mypy
+      run: mypy src/ --strict
+
+    - name: Run Tests (Skip Real API)
+      # 실제 API 호출 테스트는 제외하고 실행 (-m "not real_api")
+      run: pytest -m "not real_api"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./auction-viewer
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
+        cache: 'npm'
+        cache-dependency-path: auction-viewer/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Type check
+      run: npx tsc --noEmit
+
+    - name: Lint
+      run: npm run lint

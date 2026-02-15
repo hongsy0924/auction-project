@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "auction-crawler"
@@ -14,6 +14,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "tqdm>=4.65.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +33,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "N801", "N802", "N803", "N806", "N815", "N816"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -39,6 +41,13 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+module = ["pnu_generator", "scripts.*"]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "real_api: mark test as calling real external API",
+]

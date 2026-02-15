@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import aiohttp
 
@@ -28,7 +28,8 @@ DEFAULT_HEADERS = {
 }
 
 
-def is_blocked_response(result: Dict[str, Any]) -> bool:
+
+def is_blocked_response(result: dict[str, Any]) -> bool:
     """API 차단 여부 확인"""
     error_message = result.get('error') or result.get('message', '')
     return '차단' in str(error_message) or '비정상적인 접속' in str(error_message)
@@ -38,7 +39,7 @@ async def fetch_auction_page(
     session: aiohttp.ClientSession,
     request: AuctionApiRequest,
     page: int,
-) -> Tuple[list, Dict[str, Any]]:
+) -> tuple[list[Any], dict[str, Any]]:
     """
     단일 페이지의 경매 데이터를 API에서 가져옵니다.
 

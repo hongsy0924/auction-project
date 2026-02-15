@@ -2,15 +2,15 @@
 Utility functions — retry decorator, caching, and logging setup.
 Updated to use src.settings instead of old config.py dicts.
 """
+import asyncio
+import hashlib
 import json
 import logging
 import os
-import time
-import hashlib
-import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Callable, TypeVar, cast
 from functools import wraps
+from typing import Any, TypeVar, cast
 
 from src.settings import get_settings
 
@@ -18,99 +18,136 @@ T = TypeVar('T')
 
 
 def retry_with_backoff(
-    max_retries: Optional[int] = None,
-    base_delay: Optional[float] = None,
+    max_retries: int | None = None,
+    base_delay: float | None = None,
     max_delay: float = 60.0,
-):
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """
-    지수 백오프를 사용한 재시도 데코레이터.
-    기본값은 settings에서 가져옵니다.
+    Exponential backoff retry decorator for async functions.
+    Uses settings for defaults if not provided.
     """
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        async def wrapper(*args, **kwargs) -> T:
-            settings = get_settings()
-            _max_retries = max_retries if max_retries is not None else settings.crawling.max_retries
-            _base_delay = base_delay if base_delay is not None else settings.crawling.retry_delay
+    # These will be the default values if not overridden by decorator arguments
+    # They are captured in the closure of the decorator function
+    settings = get_settings()
+    _max_retries_default = settings.crawling.max_retries
+    _base_delay_default = settings.crawling.retry_delay
 
-            retries = 0
-            while retries < _max_retries:
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+        @wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
+            # Use decorator arguments if provided, otherwise use the defaults captured from settings
+            current_retries = max_retries if max_retries is not None else _max_retries_default
+            current_delay = base_delay if base_delay is not None else _base_delay_default
+
+            last_exception = None
+
+            for attempt in range(current_retries + 1): # +1 because range is exclusive, and we want to allow `current_retries` retries after the first attempt
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
-                    retries += 1
-                    if retries == _max_retries:
-                        logger.error(f"최대 재시도 횟수({_max_retries}) 초과: {str(e)}")
-                        raise
+                    last_exception = e
+                    if attempt == current_retries: # This is the last allowed attempt (0-indexed)
+                        logger.error(f"Max retries ({current_retries}) reached for {func.__name__}. Last error: {e}")
+                        raise last_exception
 
-                    delay = min(_base_delay * (2 ** (retries - 1)), max_delay)
-                    logger.warning(f"재시도 {retries}/{_max_retries} (대기: {delay}초): {str(e)}")
+                    delay = min(current_delay * (2 ** attempt), max_delay)
+                    logger.warning(f"Attempt {attempt + 1}/{current_retries + 1} failed for {func.__name__}: {e}. Retrying in {delay:.2f}s...")
                     await asyncio.sleep(delay)
 
-            raise Exception("재시도 실패")
+            # This line should theoretically not be reached if an exception is always raised on the last attempt
+            raise last_exception if last_exception else Exception("Retry failed without an explicit exception.")
 
-        return cast(Callable[..., T], wrapper)
+        return wrapper
     return decorator
 
 
 class Cache:
-    """파일 기반 캐시"""
+    """Simple JSON-based file cache"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         settings = get_settings()
-        self.cache_dir = settings.file.cache_dir
         self.enabled = settings.cache.enabled
-        self.expiry_days = settings.cache.expiry_days
-        self.max_size = settings.cache.max_size
-        self._ensure_cache_dir()
+        self.cache_dir = ".cache"
+        if self.enabled:
+            self._ensure_cache_dir()
+            self._cleanup_old_cache(settings.cache.expiry_days)
 
-    def _ensure_cache_dir(self):
-        os.makedirs(self.cache_dir, exist_ok=True)
+    def _ensure_cache_dir(self) -> None:
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
 
     def _get_cache_path(self, key: str) -> str:
-        hash_key = hashlib.md5(key.encode()).hexdigest()
-        return os.path.join(self.cache_dir, f"{hash_key}.json")
+        hashed_key = hashlib.md5(key.encode()).hexdigest()
+        return os.path.join(self.cache_dir, f"{hashed_key}.json")
 
-    def _cleanup_old_cache(self):
+    def _cleanup_old_cache(self, expiry_days: int) -> None:
+        """Clean up expired cache files"""
         if not os.path.exists(self.cache_dir):
             return
-        current_time = time.time()
-        expiry_seconds = self.expiry_days * 24 * 60 * 60
+
+        now = datetime.now()
         for filename in os.listdir(self.cache_dir):
             file_path = os.path.join(self.cache_dir, filename)
-            if os.path.isfile(file_path):
-                file_time = os.path.getmtime(file_path)
-                if current_time - file_time > expiry_seconds:
-                    os.remove(file_path)
+            if os.path.isfile(file_path) and filename.endswith('.json'):
+                try:
+                    # Check file modification time first (optimization)
+                    mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+                    if (now - mtime).days > expiry_days:
+                        os.remove(file_path)
+                        continue
 
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
+                    # Then check content expiry if needed
+                    with open(file_path, encoding='utf-8') as f:
+                        data = json.load(f)
+                        if 'expiry' in data and datetime.fromisoformat(data['expiry']) < now:
+                            os.remove(file_path)
+                except (OSError, json.JSONDecodeError):
+                    # Remove corrupted files
+                    try:
+                        os.remove(file_path)
+                    except OSError:
+                        pass
+
+    def get(self, key: str) -> dict[str, Any] | None:
         if not self.enabled:
             return None
-        cache_path = self._get_cache_path(key)
-        if not os.path.exists(cache_path):
-            return None
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if 'expiry' in data and datetime.fromisoformat(data['expiry']) < datetime.now():
-                    os.remove(cache_path)
-                    return None
-                return data['value']
-        except Exception:
-            return None
 
-    def set(self, key: str, value: Any, expiry_days: Optional[int] = None):
+        cache_path = self._get_cache_path(key)
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, encoding='utf-8') as f:
+                    data = json.load(f)
+                    if 'expiry' in data and datetime.fromisoformat(data['expiry']) < datetime.now():
+                        # Expired
+                        os.remove(cache_path)
+                        return None
+                    return cast(dict[str, Any], data['value'])
+            except Exception as e:
+                logger.warning(f"Cache read error for key '{key}': {e}")
+                return None
+        return None
+
+    def set(self, key: str, value: Any, expiry_days: int | None = None) -> None:
         if not self.enabled:
             return
-        self._cleanup_old_cache()
-        expiry = datetime.now() + timedelta(days=expiry_days or self.expiry_days)
-        cache_data = {'value': value, 'expiry': expiry.isoformat()}
+
+        settings = get_settings()
+        if expiry_days is None:
+            expiry_days = settings.cache.expiry_days
+
         cache_path = self._get_cache_path(key)
+        expiry = (datetime.now() + timedelta(days=expiry_days)).isoformat()
+
+        data = {
+            'value': value,
+            'expiry': expiry
+        }
+
         try:
             with open(cache_path, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, ensure_ascii=False)
+                json.dump(data, f, ensure_ascii=False)
         except Exception as e:
-            logger.error(f"캐시 저장 실패: {e}")
+            logger.warning(f"Cache write error for key '{key}': {e}")
 
 
 # 전역 로거 (logging.basicConfig는 entry point에서 설정됨)
