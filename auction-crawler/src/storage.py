@@ -1,6 +1,7 @@
 """
 Storage module — Excel and SQLite persistence.
 Handles saving auction data to files and database.
+Uses SQLAlchemy engine for database operations.
 """
 from __future__ import annotations
 
@@ -8,12 +9,12 @@ import asyncio
 import datetime
 import logging
 import os
-import sqlite3
-from typing import Any, Dict, List
+from typing import Any, cast
 
 import pandas as pd
 from tqdm import tqdm
 
+from src.db.engine import get_engine
 from src.settings import get_settings
 
 logger = logging.getLogger("auction_crawler.storage")
@@ -23,7 +24,7 @@ async def enrich_with_land_use(
     df: pd.DataFrame,
     batch_size: int,
     request_delay: float,
-) -> tuple[pd.DataFrame, List[Dict[str, Any]]]:
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     """
     VWorld API를 통해 토지이용정보를 조회하여 데이터를 보강합니다.
 
@@ -33,9 +34,9 @@ async def enrich_with_land_use(
     # pnu_generator는 기존 모듈을 그대로 사용
     from pnu_generator import PNUGenerator, process_batch
 
-    generator = PNUGenerator()
-    all_results: List[Dict[str, Any]] = []
-    failed_cases: List[Dict[str, Any]] = []
+    generator = PNUGenerator()  # type: ignore[no-untyped-call]
+    all_results: list[dict[str, Any]] = []
+    failed_cases: list[dict[str, Any]] = []
 
     for start_idx in tqdm(range(0, len(df), batch_size), desc="토지이용정보 조회 중"):
         try:
@@ -65,7 +66,8 @@ async def enrich_with_land_use(
         except Exception as e:
             logger.error(f"배치 처리 중 오류 발생: {e}")
             for idx in range(start_idx, min(start_idx + batch_size, len(df))):
-                failed_cases.append({**df.iloc[idx].to_dict(), 'error': str(e)})
+                data_dict = cast(dict[str, Any], df.iloc[idx].to_dict())
+                failed_cases.append({**data_dict, 'error': str(e)})
 
     if all_results:
         enriched_df = pd.DataFrame(all_results)
@@ -76,10 +78,11 @@ async def enrich_with_land_use(
     return enriched_df, failed_cases
 
 
-async def save_auction_data(data: List[Dict[str, Any]]) -> None:
+async def save_auction_data(data: list[dict[str, Any]]) -> None:
     """
     경매 데이터를 Excel 파일과 SQLite DB에 저장합니다.
     VWorld API 호출 여부는 설정에 따라 결정됩니다.
+    SQLAlchemy engine을 통해 DB에 저장합니다.
     """
     if not data:
         logger.warning("저장할 데이터가 없습니다.")
@@ -120,12 +123,11 @@ async def save_auction_data(data: List[Dict[str, Any]]) -> None:
         result_df.to_excel(output_file, index=False)
         logger.info(f"경매 목록 {len(result_df)}건 저장 완료: {output_file}")
 
-        # SQLite DB 저장
-        db_file = os.path.join(settings.file.database_dir, 'auction_data.db')
-        os.makedirs(os.path.dirname(db_file), exist_ok=True)
-        with sqlite3.connect(db_file) as conn:
-            result_df.to_sql('auction_list', conn, if_exists='replace', index=False)
-        logger.info(f"DB 저장 완료: {db_file}")
+        # SQLite DB 저장 — SQLAlchemy engine 사용
+        db_path = os.path.join(settings.file.database_dir, 'auction_data.db')
+        engine = get_engine(db_path)
+        result_df.to_sql('auction_list', engine, if_exists='replace', index=False)
+        logger.info(f"DB 저장 완료: {db_path}")
 
     except Exception as e:
         logger.error(f"데이터 저장 중 오류 발생: {e}")

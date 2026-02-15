@@ -1,18 +1,20 @@
-import pandas as pd
-from typing import List, Dict, Optional
-import aiohttp
 import asyncio
 import re
+
+import aiohttp
+import pandas as pd
 from tqdm import tqdm
+
 from config import API_CONFIG
 from utils import logger, retry_with_backoff
+
 
 class PNUGenerator:
     def __init__(self):
         self.base_url = API_CONFIG['vworld_url']
         self.api_key = API_CONFIG['vworld_api_key']
-        
-    def create_pnu(self, daepyoSidoCd: str, daepyoSiguCd: str, daepyoDongCd: str, daepyoRdCd: Optional[str], daepyoLotno: str) -> List[Optional[str]]:
+
+    def create_pnu(self, daepyoSidoCd: str, daepyoSiguCd: str, daepyoDongCd: str, daepyoRdCd: str | None, daepyoLotno: str) -> list[str | None]:
         """PNU(필지고유번호)를 생성합니다."""
         try:
             # 원본 길이 검증 (zfill 전에 검증)
@@ -22,16 +24,16 @@ class PNUGenerator:
                 return [None]
             if len(str(daepyoDongCd)) != 3 or not str(daepyoDongCd).isdigit():
                 return [None]
-            
+
             riCd = str(daepyoRdCd or "00").zfill(2)
             pnu_prefix = f"{str(daepyoSidoCd).zfill(2)}{str(daepyoSiguCd).zfill(3)}{str(daepyoDongCd).zfill(3)}{riCd}"
             if len(pnu_prefix) != 10 or not pnu_prefix.isdigit():
                 return [None]
-            
+
             lot_numbers = [num.strip() for num in str(daepyoLotno).split('^') if num.strip()]
             if not lot_numbers:
                 return [None]
-            
+
             pnu_list = []
             for num in lot_numbers:
                 land_type = "2" if "산" in num else "1"
@@ -51,7 +53,7 @@ class PNUGenerator:
             return [None]
 
     @retry_with_backoff()
-    async def get_land_use_info(self, pnu: str, session: aiohttp.ClientSession, cnflcAt: Optional[str] = None) -> Dict:
+    async def get_land_use_info(self, pnu: str, session: aiohttp.ClientSession, cnflcAt: str | None = None) -> dict:
         """vworld API로 토지이용정보를 가져옵니다. cnflcAt이 주어지면 해당 옵션으로 조회합니다."""
         params = {'key': self.api_key, 'pnu': pnu, 'domain': 'api.vworld.kr', 'format': 'json'}
         if cnflcAt:
@@ -70,11 +72,11 @@ class PNUGenerator:
             logger.error(f"토지이용정보 조회 실패 (PNU: {pnu}, cnflcAt: {cnflcAt}): {e}")
             return {'pnu': pnu, 'cnflcAt': cnflcAt, 'land_use': None, 'error': str(e)}
 
-async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: int, batch_size: int) -> List[Dict]:
+async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: int, batch_size: int) -> list[dict]:
     """배치 단위로 PNU 생성 및 토지이용정보 조회"""
     end_idx = min(start_idx + batch_size, len(df))
     batch_df = df.iloc[start_idx:end_idx]
-    
+
     tasks = []
     task_info = []
 
@@ -90,7 +92,7 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
 
     # 세 가지 cnflcAt 값에 대한 호출을 준비
     cnflc_values = ["1", "2", "3"]
-    task_meta: List[Dict] = []
+    task_meta: list[dict] = []
 
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
         for info in task_info:
@@ -98,11 +100,11 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
                 for cval in cnflc_values:
                     tasks.append(generator.get_land_use_info(info['pnu'], session, cval))
                     task_meta.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'cnflcAt': cval})
-        
+
         api_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # 결과를 original_index, pnu 기준으로 집계하여 land_use_1/2/3 필드로 합치기
-    aggregated: Dict[str, Dict] = {}
+    aggregated: dict[str, dict] = {}
     for meta, res in zip(task_meta, api_results):
         key = f"{meta['original_index']}|{meta['pnu']}"
         if key not in aggregated:
@@ -125,7 +127,7 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
             aggregated[key]['land_use_3'] = land_value
 
     # PNU 생성 실패 등의 케이스 포함하여 최종 결과 배열 구성
-    final_results: List[Dict] = []
+    final_results: list[dict] = []
     success_keys = set(aggregated.keys())
     for info in task_info:
         if 'error' in info:
@@ -137,7 +139,7 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
                 final_results.append(entry)
             else:
                 final_results.append({'original_index': info['original_index'], 'pnu': info['pnu'], 'land_use_1': None, 'land_use_2': None, 'land_use_3': None, 'error': 'API 응답 없음'})
-            
+
     return final_results
 
 async def main():
@@ -145,10 +147,10 @@ async def main():
     try:
         df = pd.read_excel('auction_list.xlsx')
         generator = PNUGenerator()
-        
+
         all_results, failed_cases = [], []
         batch_size = 200
-        
+
         with tqdm(total=len(df), desc="토지이용정보 조회 중") as pbar:
             for start_idx in range(0, len(df), batch_size):
                 batch_results = await process_batch(generator, df, start_idx, batch_size)
@@ -159,21 +161,21 @@ async def main():
                     else:
                         all_results.append(result)
                 pbar.update(min(batch_size, len(df) - start_idx))
-        
+
         if all_results:
             result_df = pd.DataFrame(all_results)
             result_df.to_excel('auction_list_with_land_use.xlsx', index=False)
             print(f"\n성공 {len(all_results)}건 -> auction_list_with_land_use.xlsx")
-        
+
         if failed_cases:
             failed_df = pd.DataFrame(failed_cases)
             failed_df.to_excel('failed_cases.xlsx', index=False)
             print(f"실패 {len(failed_cases)}건 -> failed_cases.xlsx")
-        
+
     except FileNotFoundError:
         print("auction_list.xlsx 파일을 찾을 수 없습니다.")
     except Exception as e:
         print(f"오류 발생: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

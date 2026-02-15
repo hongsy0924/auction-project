@@ -1,0 +1,77 @@
+.wrapper {
+    overflow: auto;
+    max-height: 70vh;
+    max-width: 100vw;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+}
+
+.table {
+    border-collapse: collapse;
+    min-width: 1200px;
+    font-size: 12px;
+    width: 100%;
+}
+
+.headerCell {
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 2px solid var(--border-color);
+    z-index: 1;
+    position: sticky;
+    top: 0;
+}
+
+.headerCellFrozen {
+    composes: headerCell;
+    background: var(--bg-frozen);
+    z-index: 3;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.1);
+}
+
+.cell {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-light);
+    white-space: nowrap;
+}
+
+.cellFrozen {
+    composes: cell;
+    position: sticky;
+    background: var(--background);
+    z-index: 1;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+.row:hover .cell,
+.row:hover .cellFrozen {
+    background: var(--bg-hover);
+}
+
+.highlight {
+    background: #ffe066;
+    color: #222;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.emptyState {
+    padding: 40px;
+    text-align: center;
+    font-size: 15px;
+    color: var(--text-muted);
+}
+
+.emptyResetButton {
+    margin-top: 12px;
+    padding: 8px 16px;
+    font-size: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    color: var(--foreground);
+    cursor: pointer;
+}

@@ -5,7 +5,7 @@ Provides type-safe representations of API requests, responses, and auction items
 from __future__ import annotations
 
 import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +15,7 @@ class PageInfo(BaseModel):
     pageNo: int = 1
     pageSize: int = 40
     totalYn: str = "Y"
-    totalCnt: Optional[int] = None
+    totalCnt: int | None = None
 
     @property
     def total_pages(self) -> int:
@@ -59,11 +59,11 @@ class SearchParams(BaseModel):
 
 class AuctionApiRequest(BaseModel):
     """경매 API 요청 본문"""
-    dma_pageInfo: Dict[str, Any]
-    dma_srchGdsDtlSrchInfo: Dict[str, Any]
+    dma_pageInfo: dict[str, Any]
+    dma_srchGdsDtlSrchInfo: dict[str, Any]
 
     @classmethod
-    def create(cls, page: int, page_size: int, search_params: Optional[SearchParams] = None) -> AuctionApiRequest:
+    def create(cls, page: int, page_size: int, search_params: SearchParams | None = None) -> AuctionApiRequest:
         """API 요청 생성"""
         if search_params is None:
             search_params = SearchParams.with_date_range()
@@ -77,10 +77,10 @@ class AuctionApiRequest(BaseModel):
 class CrawlResult(BaseModel):
     """단일 페이지 크롤링 결과"""
     page_num: int
-    auctions: Optional[List[Dict[str, Any]]] = None
-    page_info: Dict[str, Any] = Field(default_factory=dict)
+    auctions: list[dict[str, Any]] | None = None
+    page_info: dict[str, Any] = Field(default_factory=dict)
     is_blocked: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def is_success(self) -> bool:
@@ -92,7 +92,7 @@ class CrawlResult(BaseModel):
 
 
 # 컬럼 매핑 (크롤러 → 한글, sqlite_cleaning과 공유)
-COLUMN_MAPPING: Dict[str, str] = {
+COLUMN_MAPPING: dict[str, str] = {
     "srnSaNo": "사건번호",
     "dspslUsgNm": "물건종류",
     "jimokList": "지목",
@@ -114,4 +114,5 @@ COLUMN_MAPPING: Dict[str, str] = {
     "jiwonNm": "담당법원",
     "jpDeptNm": "담당계",
     "tel": "전화번호",
+    "docid": "고유키",
 }

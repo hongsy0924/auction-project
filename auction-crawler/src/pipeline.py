@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from tqdm import tqdm
 
@@ -23,10 +23,10 @@ class CrawlPipeline:
 
     def __init__(self) -> None:
         self.settings = get_settings()
-        self.all_auctions: List[Dict[str, Any]] = []
-        self.successful_pages: Set[int] = set()
-        self.failed_pages: List[int] = []
-        self.blocked_pages: List[int] = []
+        self.all_auctions: list[dict[str, Any]] = []
+        self.successful_pages: set[int] = set()
+        self.failed_pages: list[int] = []
+        self.blocked_pages: list[int] = []
 
     async def run(self) -> None:
         """전체 크롤링 파이프라인 실행"""
@@ -88,7 +88,7 @@ class CrawlPipeline:
         else:
             await self._fetch_batched(session, all_pages, concurrency)
 
-    async def _fetch_sequential(self, session: Any, pages: List[int]) -> None:
+    async def _fetch_sequential(self, session: Any, pages: list[int]) -> None:
         """순차 처리"""
         logger.info(
             f"총 {len(pages)}개 페이지를 순차적으로 크롤링합니다. "
@@ -110,7 +110,7 @@ class CrawlPipeline:
             if idx % 10 == 0 and idx < len(pages):
                 await asyncio.sleep(self.settings.crawling.batch_delay)
 
-    async def _fetch_batched(self, session: Any, pages: List[int], concurrency: int) -> None:
+    async def _fetch_batched(self, session: Any, pages: list[int], concurrency: int) -> None:
         """배치 단위 병렬 처리"""
         batch_size = concurrency * 3
         logger.info(

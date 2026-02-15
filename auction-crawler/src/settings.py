@@ -5,8 +5,7 @@ No pydantic-settings dependency needed — uses dotenv + os.getenv directly.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
@@ -99,7 +98,7 @@ class Settings:
 
 
 # 싱글톤
-_settings: Optional[Settings] = None
+_settings: Settings | None = None
 
 
 def get_settings() -> Settings:

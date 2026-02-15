@@ -6,7 +6,6 @@ Kept for backward compatibility with existing scripts (run-crawler.sh, deploy.sh
 import asyncio
 import logging
 import os
-import sys
 from datetime import datetime
 
 from src.settings import get_settings
