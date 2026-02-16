@@ -14,9 +14,8 @@ from config import API_CONFIG, CRAWLING_CONFIG
 
 @pytest.mark.real_api
 @pytest.mark.asyncio
-async def test_auction_api_response():
+async def test_auction_api_response(page: int = 1):
     """특정 페이지의 API 응답 확인"""
-    page = 1
     print(f"\n{'='*60}")
     print(f"페이지 {page} API 응답 확인")
     print(f"{'='*60}")
@@ -46,6 +45,14 @@ async def test_auction_api_response():
 
     try:
         async with aiohttp.ClientSession() as session:
+            # 1. 메인 페이지 방문하여 쿠키 획득
+            main_url = "https://www.courtauction.go.kr/pgj/index.on"
+            print(f"   - 메인 페이지 방문: {main_url}")
+            async with session.get(main_url, headers=headers, ssl=False) as main_response:
+                print(f"   - 메인 페이지 응답: {main_response.status}")
+                print("   - 쿠키 획득 완료")
+
+            # 2. API 호출
             async with session.post(
                 API_CONFIG['api_url'],
                 json=data,

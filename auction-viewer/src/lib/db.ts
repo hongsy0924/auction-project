@@ -2,7 +2,7 @@
  * Database helper — centralizes SQLite access for the auction viewer.
  * Provides connection management and reusable query functions.
  */
-import Database from "better-sqlite3";
+import sqlite3 from "sqlite3";
 import path from "path";
 import fs from "fs";
 
@@ -36,15 +36,35 @@ export const SEARCH_COLUMNS = [
 
 const TABLE_NAME = "auction_list_cleaned";
 
-/**
- * Open the auction database in readonly mode.
- * Throws a descriptive error if the DB file doesn't exist.
- */
-export function getDb(): Database.Database {
+// Global variable to hold the database instance in development
+// producing a singleton similar to Prisma's recommended pattern for Next.js
+let dbInstance: sqlite3.Database | null = null;
+
+function getDatabase(): sqlite3.Database {
+    if (dbInstance) {
+        return dbInstance;
+    }
+
     if (!fs.existsSync(DB_PATH)) {
         throw new Error(`DB 파일이 존재하지 않습니다: ${DB_PATH}`);
     }
-    return new Database(DB_PATH, { readonly: true });
+
+    // Initialize the database connection
+    const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY, (err) => {
+        if (err) {
+            console.error("Failed to connect to database:", err);
+            // If connection fails, ensure we don't keep a broken instance
+            dbInstance = null;
+        } else {
+            console.log("New database connection established.");
+        }
+    });
+
+    // In development, keep the instance globally
+    // In production, you might want different handling, but for SQLite file access,
+    // a single connection is usually fine and preferred to avoid locking.
+    dbInstance = db;
+    return db;
 }
 
 /** Result shape returned by `searchAuctions`. */
@@ -55,23 +75,24 @@ export interface AuctionSearchResult {
 
 /**
  * Search auction_list_cleaned by keyword with pagination.
- *
- * @param keyword - search term (matched against all SEARCH_COLUMNS via LIKE)
- * @param page    - 1-based page number
- * @param perPage - rows per page
+ * Uses sqlite3 (async).
  */
 export function searchAuctions(
     keyword: string,
     page: number,
     perPage: number
-): AuctionSearchResult {
-    const db = getDb();
+): Promise<AuctionSearchResult> {
+    return new Promise((resolve, reject) => {
+        let db: sqlite3.Database;
+        try {
+            db = getDatabase();
+        } catch (e) {
+            return reject(e);
+        }
 
-    try {
         const offset = (page - 1) * perPage;
-
         let where = "";
-        let params: string[] = [];
+        let params: unknown[] = [];
 
         if (keyword) {
             where =
@@ -80,18 +101,32 @@ export function searchAuctions(
             params = Array(SEARCH_COLUMNS.length).fill(`%${keyword}%`);
         }
 
-        const totalRow = db
-            .prepare(`SELECT COUNT(*) as cnt FROM "${TABLE_NAME}" ${where}`)
-            .get(...params) as { cnt: number };
+        // Count query
+        db.get(
+            `SELECT COUNT(*) as cnt FROM "${TABLE_NAME}" ${where}`,
+            params,
+            (err, row: any) => {
+                if (err) {
+                    // Do NOT close the global connection
+                    return reject(err);
+                }
+                const total = row?.cnt || 0;
 
-        const rows = db
-            .prepare(
-                `SELECT * FROM "${TABLE_NAME}" ${where} LIMIT ? OFFSET ?`
-            )
-            .all(...params, perPage, offset) as Record<string, unknown>[];
-
-        return { data: rows, total: totalRow.cnt };
-    } finally {
-        db.close();
-    }
+                // Data query
+                // params for data query: [...params, perPage, offset]
+                db.all(
+                    `SELECT * FROM "${TABLE_NAME}" ${where} LIMIT ? OFFSET ?`,
+                    [...params, perPage, offset],
+                    (err, rows) => {
+                        // Do NOT close the global connection
+                        if (err) return reject(err);
+                        resolve({
+                            data: rows as Record<string, unknown>[],
+                            total,
+                        });
+                    }
+                );
+            }
+        );
+    });
 }

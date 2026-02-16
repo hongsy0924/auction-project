@@ -68,6 +68,8 @@ class AuctionApiRequest(BaseModel):
         if search_params is None:
             search_params = SearchParams.with_date_range()
 
+        # 모델 덤프 시 exclude_none=True 등을 사용하지 않고 모든 필드를 포함
+        # API가 빈 문자열을 기대하는 경우가 많음
         return cls(
             dma_pageInfo={"pageNo": page, "pageSize": page_size, "totalYn": "Y"},
             dma_srchGdsDtlSrchInfo=search_params.model_dump()
