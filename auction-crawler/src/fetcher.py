@@ -54,6 +54,7 @@ async def fetch_auction_page(
         "Referer": settings.api.base_url,
     }
 
+    logger.info(f"Requesting {settings.api.api_url} with headers: {headers} and json: {request.model_dump()}")
     async with session.post(
         settings.api.api_url,
         json=request.model_dump(),
