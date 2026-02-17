@@ -85,6 +85,19 @@ class CacheSettings:
     max_size: int = 1000
 
 
+@dataclass
+class BrowserSettings:
+    """브라우저 설정"""
+    headless: bool = True
+    window_width: int = 1920
+    window_height: int = 1080
+    timeout: int = 30000
+
+    def __post_init__(self) -> None:
+        self.headless = os.getenv('HEADLESS', 'true').lower() == 'true'
+        self.timeout = int(os.getenv('TIMEOUT', str(self.timeout)))
+
+
 class Settings:
     """통합 설정 — 모든 설정을 하나로 묶어서 제공"""
 
@@ -94,6 +107,7 @@ class Settings:
         self.file = FileSettings()
         self.logging = LoggingSettings()
         self.cache = CacheSettings()
+        self.browser = BrowserSettings()
         self.file.ensure_dirs()
 
 

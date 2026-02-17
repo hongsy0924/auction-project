@@ -21,7 +21,7 @@ install:
 	cd auction-viewer && npm install
 
 crawl:
-	cd auction-crawler && python -m src.pipeline
+	cd auction-crawler && python3 -m src.pipeline
 
 dev:
 	cd auction-viewer && npm run dev
@@ -58,4 +58,4 @@ clean:
 	rm -rf auction-viewer/.next
 
 db-clean:
-	cd auction-crawler && python sqlite_cleaning.py
+	cd auction-crawler && python3 sqlite_cleaning.py

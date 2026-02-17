@@ -9,20 +9,56 @@ if (!JWT_SECRET) {
     console.error('FATAL: JWT_SECRET environment variable is not set');
 }
 
-// Admin credentials from environment variables
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || '';
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
-const ADMIN_NAME = process.env.ADMIN_NAME || '관리자';
+/**
+ * User credential entry.
+ */
+interface UserEntry {
+    username: string;
+    passwordHash: string;
+    name: string;
+    role: string;
+}
 
 /**
- * Simple SHA-256 password verification.
- * To generate a hash: echo -n "your-password" | shasum -a 256
+ * Load valid users from environment.
+ * Supports two formats:
+ *   1. VALID_USERS — JSON array: [{"username":"admin","passwordHash":"...","name":"관리자","role":"admin"}, ...]
+ *   2. Legacy single-user: ADMIN_USERNAME + ADMIN_PASSWORD_HASH + ADMIN_NAME
+ */
+function getValidUsers(): UserEntry[] {
+    const usersJson = process.env.VALID_USERS;
+    if (usersJson) {
+        try {
+            return JSON.parse(usersJson) as UserEntry[];
+        } catch (e) {
+            console.error('Failed to parse VALID_USERS env var:', e);
+        }
+    }
+
+    // Fallback: legacy single-user env vars
+    const username = process.env.ADMIN_USERNAME;
+    const passwordHash = process.env.ADMIN_PASSWORD_HASH;
+    if (username && passwordHash) {
+        return [{
+            username,
+            passwordHash,
+            name: process.env.ADMIN_NAME || '관리자',
+            role: 'admin',
+        }];
+    }
+
+    return [];
+}
+
+/**
+ * SHA-256 password verification with timing-safe comparison.
+ * To generate a hash: python3 -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())"
  */
 function verifyPassword(inputPassword: string, storedHash: string): boolean {
     const inputHash = crypto.createHash('sha256').update(inputPassword).digest('hex');
     return crypto.timingSafeEqual(
         Buffer.from(inputHash, 'hex'),
-        Buffer.from(storedHash, 'hex')
+        Buffer.from(storedHash, 'hex'),
     );
 }
 
@@ -31,7 +67,7 @@ export async function POST(request: NextRequest) {
         if (!JWT_SECRET) {
             return NextResponse.json(
                 { error: 'Server configuration error' },
-                { status: 500 }
+                { status: 500 },
             );
         }
 
@@ -42,39 +78,40 @@ export async function POST(request: NextRequest) {
         if (!username || !password) {
             return NextResponse.json(
                 { error: 'Username and password are required' },
-                { status: 400 }
+                { status: 400 },
             );
         }
 
-        // Verify credentials
-        const isValidUser = username === ADMIN_USERNAME
-            && ADMIN_PASSWORD_HASH
-            && verifyPassword(password, ADMIN_PASSWORD_HASH);
+        // Find matching user
+        const users = getValidUsers();
+        const matchedUser = users.find(
+            (u) => u.username === username && verifyPassword(password, u.passwordHash),
+        );
 
-        if (!isValidUser) {
+        if (!matchedUser) {
             return NextResponse.json(
                 { error: 'Invalid credentials' },
-                { status: 401 }
+                { status: 401 },
             );
         }
 
         // Create token
         const token = jwt.sign(
             {
-                username: ADMIN_USERNAME,
-                name: ADMIN_NAME,
-                role: 'admin',
+                username: matchedUser.username,
+                name: matchedUser.name,
+                role: matchedUser.role,
             },
             JWT_SECRET,
-            { expiresIn: '8h' }
+            { expiresIn: '8h' },
         );
 
         // Create response
         const response = NextResponse.json({
             user: {
-                username: ADMIN_USERNAME,
-                role: 'admin',
-            }
+                username: matchedUser.username,
+                role: matchedUser.role,
+            },
         });
 
         // Set cookie
@@ -92,7 +129,8 @@ export async function POST(request: NextRequest) {
         console.error('Login error:', error);
         return NextResponse.json(
             { error: 'Internal server error' },
-            { status: 500 }
+            { status: 500 },
         );
     }
 }
+
