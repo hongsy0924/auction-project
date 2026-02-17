@@ -1,73 +1,64 @@
-import sqlite3
+"""
+SQLite data cleaning — transforms raw auction_list into auction_list_cleaned.
+Uses SQLAlchemy ORM and the shared column mapping from src.models.
+"""
+import sys
+
 import pandas as pd
+from sqlalchemy import inspect, text
 
-# 남길 컬럼과 새 이름 매핑
-columns = {
-    "srnSaNo": "사건번호",
-    "dspslUsgNm": "물건종류",
-    "jimokList": "지목",
-    "printSt": "주소",
-    "daepyoLotno": "지번",
-    "gamevalAmt": "감정평가액",
-    "notifyMinmaePrice1": "최저매각가격",
-    # 주의: 원본 스키마 대소문자 일치 필요
-    "notifyMinmaePriceRate2": "%",
-    "mulBigo": "비고",
-    "maeGiil": "매각기일",
-    "yuchalCnt": "유찰회수",
-    "maegyuljgiil": "매각결정기일",
-    "pjbBuldList": "건축물",
-    "areaList": "면적",
-    # 새로 분리된 토지이용정보 매핑
-    "land_use_1": "포함",
-    "land_use_2": "저촉",
-    "land_use_3": "접합",
-    "land_use_combined": "토지이용계획및제한상태",
-    "jiwonNm": "담당법원",
-    "jpDeptNm": "담당계",
-    "tel": "전화번호",
-    # "colMerge" : "컬럼병합"
-}
-
-db_path = "../auction-viewer/database/auction_data.db"
-table = "auction_list"
-new_table = "auction_list_cleaned"
+from src.db.engine import get_engine
+from src.db.models import AuctionCleaned
+from src.models import COLUMN_MAPPING
+from src.settings import get_settings
 
 
-conn = sqlite3.connect(db_path)
-cur = conn.cursor()
+def clean_auction_db(db_path: str | None = None) -> None:
+    """
+    원본 테이블(auction_list)에서 필요한 컬럼만 추출하여
+    한글 이름으로 매핑된 새 테이블(auction_list_cleaned)을 생성합니다.
+    SQLAlchemy ORM을 사용합니다.
+    """
+    if db_path is None:
+        settings = get_settings()
+        db_path = f"{settings.file.database_dir}/auction_data.db"
 
-# 원본 테이블에 존재하는 컬럼 목록 조회
-cur.execute(f'PRAGMA table_info({table});')
-existing_cols_rows = cur.fetchall()
-existing_cols = {row[1] for row in existing_cols_rows}
+    engine = get_engine(db_path)
+    inspector = inspect(engine)
 
-# 1. (기존 테이블 삭제) 새 테이블 생성 전에!
-cur.execute(f'DROP TABLE IF EXISTS {new_table};')
+    table = "auction_list"
+    new_table = AuctionCleaned.__tablename__
 
-# 2. 새 테이블 생성
-col_defs = ", ".join([f'"{v}" TEXT' for v in columns.values()])
-cur.execute(f'CREATE TABLE IF NOT EXISTS {new_table} ({col_defs});')
+    # 원본 테이블의 컬럼 목록 조회 (SQLAlchemy inspect 사용)
+    existing_cols = {col["name"] for col in inspector.get_columns(table)}
 
-# 3. 데이터 복사 (컬럼명 매핑)
-#    - 원본에 없는 컬럼(예: SKIP_VWORLD_API=true 시 land_use_* 미존재)은 NULL로 채움
-select_parts = []
-for src_col in columns.keys():
-    if src_col in existing_cols:
-        select_parts.append(f'"{src_col}"')
-    else:
-        select_parts.append(f'NULL AS "{src_col}"')
+    with engine.begin() as conn:
+        # 기존 테이블 삭제 후 새 테이블 생성 (ORM 모델 기반)
+        conn.execute(text(f'DROP TABLE IF EXISTS "{new_table}"'))
+        AuctionCleaned.__table__.create(bind=engine, checkfirst=True)
 
-col_select = ", ".join(select_parts)
-col_insert = ", ".join([f'"{v}"' for v in columns.values()])
-cur.execute(f'INSERT INTO {new_table} ({col_insert}) SELECT {col_select} FROM {table};')
+        # 데이터 복사 (원본에 없는 컬럼은 NULL)
+        select_parts = []
+        for src_col in COLUMN_MAPPING:
+            if src_col in existing_cols:
+                select_parts.append(f'"{src_col}"')
+            else:
+                select_parts.append(f'NULL AS "{src_col}"')
 
-conn.commit()
-conn.close()
-print(f"완료! 새 테이블이 {db_path}에 생성되었습니다.")
+        col_select = ", ".join(select_parts)
+        col_insert = ", ".join([f'"{v}"' for v in COLUMN_MAPPING.values()])
 
-# 미리보기 (원하는 경로 하나만)
-conn = sqlite3.connect(db_path)
-df = pd.read_sql_query(f"SELECT * FROM {new_table} LIMIT 5", conn)
-print(df.head())
-conn.close()
+        conn.execute(text(
+            f'INSERT INTO "{new_table}" ({col_insert}) SELECT {col_select} FROM "{table}"'
+        ))
+
+    print(f"완료! 새 테이블이 {db_path}에 생성되었습니다.")
+
+    # 미리보기
+    df = pd.read_sql_query(f'SELECT * FROM "{new_table}" LIMIT 5', engine)
+    print(df.head())
+
+
+if __name__ == "__main__":
+    path = sys.argv[1] if len(sys.argv) > 1 else None
+    clean_auction_db(path)

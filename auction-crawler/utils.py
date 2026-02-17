@@ -1,160 +1,155 @@
+"""
+Utility functions — retry decorator, caching, and logging setup.
+Updated to use src.settings instead of old config.py dicts.
+"""
+import asyncio
+import hashlib
 import json
 import logging
 import os
-import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Callable, TypeVar, cast
-import hashlib
-import asyncio
 from functools import wraps
-from config import CACHE_CONFIG, FILE_CONFIG, LOGGING_CONFIG, CRAWLING_CONFIG
+from typing import Any, TypeVar, cast
+
+from src.settings import get_settings
 
 T = TypeVar('T')
 
+
 def retry_with_backoff(
-    max_retries: int = CRAWLING_CONFIG['max_retries'],
-    base_delay: float = CRAWLING_CONFIG['retry_delay'],
-    max_delay: float = 60.0
-):
+    max_retries: int | None = None,
+    base_delay: float | None = None,
+    max_delay: float = 60.0,
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """
-    지수 백오프를 사용한 재시도 데코레이터
+    Exponential backoff retry decorator for async functions.
+    Uses settings for defaults if not provided.
     """
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    # These will be the default values if not overridden by decorator arguments
+    # They are captured in the closure of the decorator function
+    settings = get_settings()
+    _max_retries_default = settings.crawling.max_retries
+    _base_delay_default = settings.crawling.retry_delay
+
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
         @wraps(func)
-        async def wrapper(*args, **kwargs) -> T:
-            retries = 0
-            while retries < max_retries:
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
+            # Use decorator arguments if provided, otherwise use the defaults captured from settings
+            current_retries = max_retries if max_retries is not None else _max_retries_default
+            current_delay = base_delay if base_delay is not None else _base_delay_default
+
+            last_exception = None
+
+            for attempt in range(current_retries + 1): # +1 because range is exclusive, and we want to allow `current_retries` retries after the first attempt
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
-                    retries += 1
-                    if retries == max_retries:
-                        logger.error(f"최대 재시도 횟수({max_retries}) 초과: {str(e)}")
-                        raise
-                    
-                    # 지수 백오프 계산
-                    delay = min(base_delay * (2 ** (retries - 1)), max_delay)
-                    logger.warning(f"재시도 {retries}/{max_retries} (대기 시간: {delay}초): {str(e)}")
+                    last_exception = e
+                    if attempt == current_retries: # This is the last allowed attempt (0-indexed)
+                        logger.error(f"Max retries ({current_retries}) reached for {func.__name__}. Last error: {e}")
+                        raise last_exception
+
+                    delay = min(current_delay * (2 ** attempt), max_delay)
+                    logger.warning(f"Attempt {attempt + 1}/{current_retries + 1} failed for {func.__name__}: {e}. Retrying in {delay:.2f}s...")
                     await asyncio.sleep(delay)
-            
-            raise Exception("재시도 실패")
-        
-        return cast(Callable[..., T], wrapper)
+
+            # This line should theoretically not be reached if an exception is always raised on the last attempt
+            raise last_exception if last_exception else Exception("Retry failed without an explicit exception.")
+
+        return wrapper
     return decorator
 
+
 class Cache:
-    def __init__(self):
-        self.cache_dir = FILE_CONFIG['cache_dir']
-        self.enabled = CACHE_CONFIG['enabled']
-        self.expiry_days = CACHE_CONFIG['expiry_days']
-        self.max_size = CACHE_CONFIG['max_size']
-        self._ensure_cache_dir()
-    
-    def _ensure_cache_dir(self):
-        """캐시 디렉토리가 존재하는지 확인"""
-        os.makedirs(self.cache_dir, exist_ok=True)
-    
+    """Simple JSON-based file cache"""
+
+    def __init__(self) -> None:
+        settings = get_settings()
+        self.enabled = settings.cache.enabled
+        self.cache_dir = ".cache"
+        if self.enabled:
+            self._ensure_cache_dir()
+            self._cleanup_old_cache(settings.cache.expiry_days)
+
+    def _ensure_cache_dir(self) -> None:
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+
     def _get_cache_path(self, key: str) -> str:
-        """캐시 키에 대한 파일 경로 생성"""
-        hash_key = hashlib.md5(key.encode()).hexdigest()
-        return os.path.join(self.cache_dir, f"{hash_key}.json")
-    
-    def _cleanup_old_cache(self):
-        """오래된 캐시 파일 정리"""
+        hashed_key = hashlib.md5(key.encode()).hexdigest()
+        return os.path.join(self.cache_dir, f"{hashed_key}.json")
+
+    def _cleanup_old_cache(self, expiry_days: int) -> None:
+        """Clean up expired cache files"""
         if not os.path.exists(self.cache_dir):
             return
-        
-        current_time = time.time()
-        expiry_seconds = self.expiry_days * 24 * 60 * 60
-        
+
+        now = datetime.now()
         for filename in os.listdir(self.cache_dir):
             file_path = os.path.join(self.cache_dir, filename)
-            if os.path.isfile(file_path):
-                file_time = os.path.getmtime(file_path)
-                if current_time - file_time > expiry_seconds:
-                    os.remove(file_path)
-    
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
-        """캐시에서 데이터 가져오기"""
+            if os.path.isfile(file_path) and filename.endswith('.json'):
+                try:
+                    # Check file modification time first (optimization)
+                    mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+                    if (now - mtime).days > expiry_days:
+                        os.remove(file_path)
+                        continue
+
+                    # Then check content expiry if needed
+                    with open(file_path, encoding='utf-8') as f:
+                        data = json.load(f)
+                        if 'expiry' in data and datetime.fromisoformat(data['expiry']) < now:
+                            os.remove(file_path)
+                except (OSError, json.JSONDecodeError):
+                    # Remove corrupted files
+                    try:
+                        os.remove(file_path)
+                    except OSError:
+                        pass
+
+    def get(self, key: str) -> dict[str, Any] | None:
         if not self.enabled:
             return None
-        
+
         cache_path = self._get_cache_path(key)
-        if not os.path.exists(cache_path):
-            return None
-        
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if 'expiry' in data and datetime.fromisoformat(data['expiry']) < datetime.now():
-                    os.remove(cache_path)
-                    return None
-                return data['value']
-        except Exception:
-            return None
-    
-    def set(self, key: str, value: Any, expiry_days: Optional[int] = None):
-        """캐시에 데이터 저장"""
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, encoding='utf-8') as f:
+                    data = json.load(f)
+                    if 'expiry' in data and datetime.fromisoformat(data['expiry']) < datetime.now():
+                        # Expired
+                        os.remove(cache_path)
+                        return None
+                    return cast(dict[str, Any], data['value'])
+            except Exception as e:
+                logger.warning(f"Cache read error for key '{key}': {e}")
+                return None
+        return None
+
+    def set(self, key: str, value: Any, expiry_days: int | None = None) -> None:
         if not self.enabled:
             return
-        
-        self._cleanup_old_cache()
-        
-        expiry = datetime.now() + timedelta(days=expiry_days or self.expiry_days)
-        cache_data = {
-            'value': value,
-            'expiry': expiry.isoformat()
-        }
-        
+
+        settings = get_settings()
+        if expiry_days is None:
+            expiry_days = settings.cache.expiry_days
+
         cache_path = self._get_cache_path(key)
+        expiry = (datetime.now() + timedelta(days=expiry_days)).isoformat()
+
+        data = {
+            'value': value,
+            'expiry': expiry
+        }
+
         try:
             with open(cache_path, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, ensure_ascii=False)
+                json.dump(data, f, ensure_ascii=False)
         except Exception as e:
-            logger.error(f"캐시 저장 실패: {e}")
+            logger.warning(f"Cache write error for key '{key}': {e}")
 
-class Logger:
-    def __init__(self, name: str):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(LOGGING_CONFIG['level'])
-        
-        # 로그 디렉토리 생성
-        os.makedirs(FILE_CONFIG['log_dir'], exist_ok=True)
-        
-        # 파일 핸들러 설정
-        log_file = os.path.join(
-            FILE_CONFIG['log_dir'],
-            f"{name}_{datetime.now().strftime('%Y%m%d')}.log"
-        )
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setFormatter(logging.Formatter(
-            LOGGING_CONFIG['format'],
-            datefmt=LOGGING_CONFIG['date_format']
-        ))
-        
-        # 콘솔 핸들러 설정
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(logging.Formatter(
-            LOGGING_CONFIG['format'],
-            datefmt=LOGGING_CONFIG['date_format']
-        ))
-        
-        # 핸들러 추가
-        self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
-    
-    def info(self, message: str):
-        self.logger.info(message)
-    
-    def error(self, message: str):
-        self.logger.error(message)
-    
-    def warning(self, message: str):
-        self.logger.warning(message)
-    
-    def debug(self, message: str):
-        self.logger.debug(message)
 
-# 전역 로거 인스턴스 생성
-logger = Logger('court_auction_crawler')
-cache = Cache() 
+# 전역 로거 (logging.basicConfig는 entry point에서 설정됨)
+logger = logging.getLogger('court_auction_crawler')
+cache = Cache()

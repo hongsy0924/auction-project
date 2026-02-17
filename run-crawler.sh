@@ -1,43 +1,35 @@
 #!/bin/bash
 
+# run-crawler.sh
+# Legacy script wrapper utilizing Makefile
+
 echo "🚀 경매 크롤러 실행 및 배포 시작..."
+echo "⚠️  This script is a wrapper around 'make'. Please consider using 'make crawl' and 'make deploy' directly."
 
-# 현재 디렉토리 확인
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-echo "📁 스크립트 디렉토리: $SCRIPT_DIR"
+cd "$SCRIPT_DIR"
 
-# 가상환경의 Python 직접 사용 (절대 경로)
-PYTHON_PATH="$SCRIPT_DIR/.venv/bin/python"
-
-# Python 경로 확인
-echo "🔍 Python 경로 확인 중..."
-echo "Python 경로: $PYTHON_PATH"
-$PYTHON_PATH --version
+# Define PROJECT_DIR for virtual environment pathing
+PROJECT_DIR="$SCRIPT_DIR"
 
 # 1. 크롤러 실행
 echo "📊 경매 데이터 크롤링 중..."
-cd "$SCRIPT_DIR/auction-crawler"
-$PYTHON_PATH court_auction_crawler.py
-
-if [ $? -eq 0 ]; then
-    echo "✅ 크롤링 완료!"
-else
+make crawl
+if [ -f "$PROJECT_DIR/.venv/bin/python3" ]; then
+    PYTHON_CMD="$PROJECT_DIR/.venv/bin/python3"
+fi
+if [ $? -ne 0 ]; then
     echo "❌ 크롤링 실패!"
     exit 1
 fi
 
 # 2. SQLite 정리
 echo "🗄️ SQLite 데이터 정리 중..."
-$PYTHON_PATH sqlite_cleaning.py
-
-if [ $? -eq 0 ]; then
-    echo "✅ SQLite 정리 완료!"
-else
+make db-clean
+if [ $? -ne 0 ]; then
     echo "❌ SQLite 정리 실패!"
     exit 1
 fi
-
-cd "$SCRIPT_DIR"
 
 # 3. 변경사항 커밋
 echo "📝 변경사항 커밋 중..."
@@ -45,23 +37,7 @@ git add auction-viewer/database/
 git commit -m "Update auction data $(date +'%Y-%m-%d %H:%M:%S')"
 git push origin main
 
-if [ $? -eq 0 ]; then
-    echo "✅ 커밋 완료!"
-else
-    echo "❌ 커밋 실패!"
-    exit 1
-fi
-
 # 4. Fly.io 배포
 echo "🚀 Fly.io 배포 중..."
-cd "$SCRIPT_DIR/auction-viewer"
+cd auction-viewer
 flyctl deploy --remote-only
-
-if [ $? -eq 0 ]; then
-    echo "✅ 배포 완료!"
-else
-    echo "❌ 배포 실패!"
-    exit 1
-fi
-
-echo "�� 모든 작업이 완료되었습니다!" 

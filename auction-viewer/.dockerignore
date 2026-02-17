@@ -15,7 +15,13 @@
 
 # next.js
 /.next/
+/.next/
 /out/
+/output/
+
+/logs/
+/tmp/
+/cache/
 
 # production
 /build
