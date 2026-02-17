@@ -9,9 +9,15 @@ echo "⚠️  This script is a wrapper around 'make'. Please consider using 'mak
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Define PROJECT_DIR for virtual environment pathing
+PROJECT_DIR="$SCRIPT_DIR"
+
 # 1. 크롤러 실행
 echo "📊 경매 데이터 크롤링 중..."
 make crawl
+if [ -f "$PROJECT_DIR/.venv/bin/python3" ]; then
+    PYTHON_CMD="$PROJECT_DIR/.venv/bin/python3"
+fi
 if [ $? -ne 0 ]; then
     echo "❌ 크롤링 실패!"
     exit 1
