@@ -19,7 +19,7 @@ interface SearchServiceConfig {
 const DEFAULT_CONFIG: SearchServiceConfig = {
     searchServiceUrl: process.env.SEARCH_SERVICE_URL || "http://localhost:8100",
     topK: 10,
-    useContextualRetrieval: true,
+    useContextualRetrieval: false,
 };
 
 /**
@@ -151,7 +151,7 @@ export class MinutesService {
     ): Promise<SearchChunkResult[]> {
         const documents = details.map((d) => ({
             doc_id: d.DOCID,
-            text: d.MINTS_HTML || "",
+            text: (d.MINTS_HTML || "").slice(0, 50_000),
             meeting_name: `${d.RASMBLY_NM} ${d.MTGNM}`,
             meeting_date: d.MTG_DE,
         }));
@@ -165,7 +165,7 @@ export class MinutesService {
                     top_k: this.config.topK,
                     use_contextual_retrieval: this.config.useContextualRetrieval,
                 },
-                { timeout: 120_000 }
+                { timeout: 180_000 }
             );
 
             console.log(
