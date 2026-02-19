@@ -77,9 +77,25 @@ export default function AuctionPageClient() {
 
     return (
         <div style={{ padding: 24 }}>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
-                목록 (총 {total}건)
-            </h1>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
+                    목록 (총 {total}건)
+                </h1>
+                <a
+                    href="/minutes"
+                    style={{
+                        padding: "6px 14px",
+                        fontSize: 13,
+                        color: "var(--primary)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "var(--radius)",
+                        textDecoration: "none",
+                        fontWeight: 500,
+                    }}
+                >
+                    🔍 회의록 검색
+                </a>
+            </div>
             <AuctionSearch
                 onSearch={handleSearch}
                 onReset={handleReset}
