@@ -33,7 +33,13 @@ function AuctionTableRow({
     numberColumns,
 }: AuctionTableRowProps) {
     return (
-        <tr className={styles.row}>
+        <tr
+            className={styles.row}
+            onClick={() => {
+                // Placeholder for detail view or row action
+                console.log("Row clicked:", row["사건번호"]);
+            }}
+        >
             {columns.map((col, j) => {
                 let value: string | number | undefined = row[col];
 

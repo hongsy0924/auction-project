@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import styles from "./MinutesSearchPage.module.css";
+import { ChevronLeft, Search, Sparkles, MessageSquare, AlertCircle } from "lucide-react";
 
 /**
  * Lightweight markdown → HTML converter.
@@ -140,67 +141,98 @@ export default function MinutesSearchPage() {
     };
 
     return (
-        <div className={styles.container}>
+        <main className={styles.container}>
             <div className={styles.header}>
                 <Link href="/" className={styles.backLink}>
-                    ← 목록
+                    <ChevronLeft size={16} />
+                    <span>목록으로</span>
                 </Link>
-                <div>
+                <div className={styles.headerContent}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                        <Sparkles size={20} className="text-primary" style={{ color: "var(--primary)" }} />
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                            AI Intelligence
+                        </span>
+                    </div>
                     <h1 className={styles.title}>회의록 검색</h1>
                     <p className={styles.subtitle}>
-                        지방의회 회의록에서 사업 진행 시그널을 찾아보세요
+                        지방의회 회의록에서 사업 진행 시그널을 스마트하게 찾아보세요
                     </p>
                 </div>
             </div>
 
-            <div className={styles.inputArea}>
-                <textarea
-                    className={styles.textarea}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder={`예: "서산시에서 석지제 사업 관련 언급이 있어? 예산 배정이라든지 사업이 진척되고 있다는 시그널을 찾고 싶어."`}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSearch();
-                        }
-                    }}
-                    disabled={loading}
-                />
+            <section className={styles.searchSection}>
+                <div className={styles.inputWrapper}>
+                    <MessageSquare size={18} className={styles.searchIcon} />
+                    <textarea
+                        className={styles.textarea}
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder={`예: "서산시에서 석지제 사업 관련 언급이 있어? 예산 배정이라든지 사업이 진척되고 있다는 시그널을 찾고 싶어."`}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSearch();
+                            }
+                        }}
+                        disabled={loading}
+                    />
+                </div>
                 <div className={styles.actions}>
                     <button
                         className={styles.searchButton}
                         onClick={handleSearch}
                         disabled={loading || !query.trim()}
                     >
-                        {loading ? "분석 중..." : "검색"}
+                        {loading ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <div className={styles.miniSpinner} />
+                                <span>분석 중...</span>
+                            </div>
+                        ) : (
+                            <>
+                                <Search size={18} />
+                                <span>분석 시작</span>
+                            </>
+                        )}
                     </button>
                     <span className={styles.hint}>
                         Enter로 검색 · Shift+Enter로 줄바꿈
                     </span>
                 </div>
-            </div>
+            </section>
 
             {loading && (
-                <div className={styles.loading}>
+                <div className={styles.loadingState}>
                     <div className={styles.spinner} />
-                    <span className={styles.loadingText}>
-                        회의록을 분석하고 있습니다... 1-2분 정도 소요됩니다.
+                    <span className={styles.loadingTitle}>회의록을 심층 분석하고 있습니다</span>
+                    <span className={styles.loadingSubtitle}>
+                        지방의회 데이터를 조회하고 인공지능이 핵심 내용을 요약 중입니다 (약 1분 소요)
                     </span>
                 </div>
             )}
 
-            {error && <div className={styles.error}>{error}</div>}
-
-            {result && (
-                <div>
-                    <div className={styles.resultLabel}>분석 결과</div>
-                    <div
-                        className={styles.resultArea}
-                        dangerouslySetInnerHTML={{ __html: renderedResult }}
-                    />
+            {error && (
+                <div className={styles.errorCard}>
+                    <AlertCircle size={20} />
+                    <span>{error}</span>
                 </div>
             )}
-        </div>
+
+            {result && (
+                <section className={styles.resultContainer}>
+                    <div className={styles.resultHeader}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <Sparkles size={16} />
+                            <span className={styles.resultLabel}>AI 분석 결과</span>
+                        </div>
+                    </div>
+                    <div
+                        className={styles.resultCard}
+                        dangerouslySetInnerHTML={{ __html: renderedResult }}
+                    />
+                </section>
+            )}
+        </main>
     );
 }
