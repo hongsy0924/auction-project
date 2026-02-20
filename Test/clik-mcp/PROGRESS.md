@@ -48,36 +48,19 @@ Gemini Deep Research 기반으로 **인메모리 하이브리드 검색 아키�
 
 ## 🔲 남은 작업
 
-### 1. E2E 통합 테스트 (실제 CLIK API 연동)
-Python 검색 서비스를 실행한 상태에서 실제 CLIK API 데이터로 전체 파이프라인 테스트:
-```bash
-# 터미널 1: Python 서비스 시작
-cd test/clik-mcp/search-service
-source .venv/bin/activate
-GEMINI_API_KEY=your_key python server.py
+### 1. ~~E2E 통합 테스트 (실제 CLIK API 연동)~~ ✅ 완료!
 
-# 터미널 2: CLI 테스트
-cd test/clik-mcp
-SEARCH_SERVICE_URL=http://localhost:8100 \
-CLIK_API_KEY=your_key \
-GEMINI_API_KEY=your_key \
-npx tsx src/run-service.ts "서산시에서 석지제 사업 관련 예산 배정 논의"
-```
+**테스트 결과 (2026-02-19):**
+- 쿼리: "예산 편성 관련 회의 내용"
+- 30건 검색 → 12건 상세 조회 → **217 청크 생성** → BM25+FAISS 인덱싱 → 10건 결과
+- 검색 서비스 처리 시간: **~12초** (임베딩 포함)
+- LLM 요약: 나주시 추경예산, 남해마늘연구소, 기후테크 조례 등 6건의 상세 분석
 
-### 2. 환경변수 설정
-`.env` 파일에 `SEARCH_SERVICE_URL=http://localhost:8100` 추가 필요
-
-### 3. Web UI 테스트
-auction-viewer에서 회의록 검색 페이지 접속 → 쿼리 실행 → 결과 확인
-
-### 4. (선택) 성능 최적화
-- 임베딩 모델 warm-up: 첫 요청에만 ~20초 소요, 이후 ~1초
-- 청크 수 / `top_k` 튜닝
-- Contextual Retrieval 활성화 시 비용/지연 모니터링
-
-### 5. (선택) 배포
-- Python 서비스를 Docker 컨테이너 또는 별도 서버에 배포
-- auction-viewer의 `SEARCH_SERVICE_URL`을 배포된 주소로 변경
+**발견 및 수정한 버그:**
+- `gemini-3-flash-preview` → `gemini-2.0-flash` (모델명 오류)
+- LLM이 `keyword` (단수)를 반환하는 경우 `keywords` (배열)로 정규화
+- 문서당 텍스트 50k 자로 제한 (임베더 과부하 방지)
+- Contextual Retrieval 기본 비활성화 (429 레이트 리밋 + 타임아웃 원인)
 
 ---
 

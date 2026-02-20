@@ -23,3 +23,7 @@ auction-database/output/
 .env
 .env.*
 !.env.example
+
+# SQLite temp files
+*.db-shm
+*.db-wal
