@@ -11,7 +11,7 @@
         "test-api": "tsx src/test-api.ts"
     },
     "dependencies": {
-        "@google/generative-ai": "^0.24.1",
+        "@google/genai": "^1.42.0",
         "@modelcontextprotocol/sdk": "^1.0.0",
         "axios": "^1.7.0",
         "dotenv": "^17.3.1"

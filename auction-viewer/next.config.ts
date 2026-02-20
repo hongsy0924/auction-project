@@ -22,6 +22,8 @@ const nextConfig: NextConfig = {
     if (dev) {
       // Use absolute path to be sure
       const dbPath = path.join(__dirname, "database");
+      const cachePath = path.join(__dirname, "cache");
+      const outputPath = path.join(__dirname, "output");
       config.watchOptions = {
         ...config.watchOptions,
         // Ignored can accept absolute paths
@@ -30,6 +32,10 @@ const nextConfig: NextConfig = {
           "**/.git/**",
           dbPath,
           path.join(dbPath, "**/*"),
+          cachePath,
+          path.join(cachePath, "**/*"),
+          outputPath,
+          path.join(outputPath, "**/*"),
         ],
       };
     }

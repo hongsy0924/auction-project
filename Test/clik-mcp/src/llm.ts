@@ -1,7 +1,6 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
-let genAI: GoogleGenerativeAI | null = null;
-let activeModel: any = null;
+let genAI: GoogleGenAI | null = null;
 
 const SYSTEM_PROMPT = `You are an assistant for a land auction investment research tool.
 Users search Korean local council (지방의회) meeting minutes to find signals that a public project is progressing.
@@ -11,16 +10,15 @@ The goal is to help users validate whether it would be valuable to invest in a l
 that might be included in or adjacent to a public project being discussed in council minutes.`;
 
 function getModel() {
-    if (activeModel) return activeModel;
+    if (genAI) return genAI;
 
     const API_KEY = process.env.GEMINI_API_KEY;
     if (!API_KEY) {
         throw new Error("GEMINI_API_KEY is not set in environment variables.");
     }
 
-    genAI = new GoogleGenerativeAI(API_KEY);
-    activeModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    return activeModel;
+    genAI = new GoogleGenAI({ apiKey: API_KEY });
+    return genAI;
 }
 
 export interface ParsedQuery {
@@ -31,7 +29,7 @@ export interface ParsedQuery {
 }
 
 export async function parseQuery(query: string): Promise<ParsedQuery> {
-    const model = getModel();
+    const ai = getModel();
     const prompt = `${SYSTEM_PROMPT}
 
 You are a query parser for a Korean local council minutes search engine used for land auction research.
@@ -60,9 +58,15 @@ Return ONLY a JSON object:
 }
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: prompt
+    });
+    const text = response.text;
+
+    if (!text) {
+        throw new Error("LLM returned empty response");
+    }
 
     try {
         const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -93,7 +97,7 @@ export async function summarizeMinutes(
     minutes: { date: string; meeting: string; content: string; speaker?: string | null; agendaContext?: string | null }[],
     analysisFocus?: string[]
 ): Promise<string> {
-    const model = getModel();
+    const ai = getModel();
     if (minutes.length === 0) {
         return "관련된 회의록 내용을 찾을 수 없습니다.";
     }
@@ -142,7 +146,10 @@ Instructions:
 6. Cite the date and meeting name for each finding.
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
+    const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: prompt
+    });
+
+    return response.text || "응답을 생성할 수 없습니다.";
 }
