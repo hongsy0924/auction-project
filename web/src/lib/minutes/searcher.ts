@@ -184,7 +184,7 @@ export async function nativeHybridSearch(query: string, details: MinuteDetail[])
     const ai = getModel();
 
     // 1. Chunking
-    let allChunks: Chunk[] = [];
+    const allChunks: Chunk[] = [];
     for (const doc of details) {
         const text = (doc.MINTS_HTML || "").substring(0, 50000);
         const meetingName = `${doc.RASMBLY_NM} ${doc.MTGNM}`;

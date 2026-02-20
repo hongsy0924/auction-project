@@ -105,7 +105,7 @@ export function searchAuctions(
         db.get(
             `SELECT COUNT(*) as cnt FROM "${TABLE_NAME}" ${where}`,
             params,
-            (err, row: any) => {
+            (err, row: { cnt?: number } | undefined) => {
                 if (err) {
                     // Do NOT close the global connection
                     return reject(err);

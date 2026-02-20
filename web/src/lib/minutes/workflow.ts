@@ -1,23 +1,8 @@
-import axios from "axios";
 import { ClikClient } from "./clik-client";
 import { parseQuery, summarizeMinutes } from "./llm";
 import { nativeHybridSearch } from "./searcher";
 import { findCouncilId } from "./councils";
 import type { MinuteListItem, MinuteDetail } from "./types";
-
-
-
-interface SearchChunkResult {
-    text: string;
-    speaker: string | null;
-    agenda_context: string | null;
-    score: number;
-    bm25_rank: number | null;
-    vector_rank: number | null;
-    doc_id: string;
-    meeting_name: string;
-    meeting_date: string;
-}
 
 export class MinutesService {
     private clikClient: ClikClient;
@@ -103,7 +88,15 @@ export class MinutesService {
 
         // ── Step 4: Hybrid Search via Native TypeScript & Gemini ──────────────────
         console.log(`[MinutesService] Sending ${details.length} documents to native search service...`);
-        let searchResults: any[] = [];
+        let searchResults: {
+            text: string;
+            speaker: string | null;
+            agendaContext: string | null;
+            score: number;
+            docId: string;
+            meetingName: string;
+            meetingDate: string;
+        }[] = [];
         try {
             const res = await nativeHybridSearch(userQuery, details);
             searchResults = res.results;
@@ -122,11 +115,11 @@ export class MinutesService {
 
         // ── Step 5: Summarize with LLM ────────────────────────────────
         const contexts = searchResults.map((r) => ({
-            date: r.meeting_date,
-            meeting: r.meeting_name,
+            date: r.meetingDate,
+            meeting: r.meetingName,
             content: r.text,
             speaker: r.speaker,
-            agendaContext: r.agenda_context,
+            agendaContext: r.agendaContext,
         }));
 
         console.log(`[MinutesService] Summarizing ${contexts.length} chunks...`);
