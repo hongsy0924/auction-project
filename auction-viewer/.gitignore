@@ -30,6 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# backups and traces
+.cache_backup/
+.output_backup/
+.database/
+traceDir/
 # env files (can opt-in for committing if needed)
 .env*
 
