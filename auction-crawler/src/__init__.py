@@ -1,1 +1,0 @@
-"""Auction Crawler - Modular Package"""
