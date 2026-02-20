@@ -8,9 +8,7 @@ crawler/data/
 # Next.js / Web
 web/.next/
 web/node_modules/
-!web/database/
-!web/database/auction_data.db
-
+web/database/*.db
 # Misc
 chromedriver-mac-arm64/
 crawler/chromedriver/
