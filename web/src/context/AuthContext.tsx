@@ -18,36 +18,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
-useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-        try {
-            setUser(JSON.parse(storedUser));
-        } catch (error) {
-            localStorage.removeItem("user");
+    useEffect(() => {
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch {
+                localStorage.removeItem("user");
+            }
         }
-    }
-    setLoading(false);
-}, []);
+        setLoading(false);
+    }, []);
 
-const login = async (username: string, password: string) => {
-    const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-    });
+    const login = async (username: string, password: string) => {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, password }),
+        });
 
-    const data = await response.json();
+        const data = await response.json();
 
-    if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
-    }
-    
-    setUser(data.user);
-    localStorage.setItem("user", JSON.stringify(data.user));
-};
+        if (!response.ok) {
+            throw new Error(data.error || 'Login failed');
+        }
+
+        setUser(data.user);
+        localStorage.setItem("user", JSON.stringify(data.user));
+    };
 
     const logout = async () => {
         await fetch('/api/logout', { method: 'POST' });

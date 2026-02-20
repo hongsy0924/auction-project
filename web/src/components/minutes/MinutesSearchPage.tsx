@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import styles from "./MinutesSearchPage.module.css";
 
 /**
@@ -20,7 +21,7 @@ function renderMarkdown(md: string): string {
     };
 
     for (let i = 0; i < lines.length; i++) {
-        let line = lines[i];
+        const line = lines[i];
 
         // Horizontal rule
         if (/^(-{3,}|_{3,}|\*{3,})$/.test(line.trim())) {
@@ -141,9 +142,9 @@ export default function MinutesSearchPage() {
     return (
         <div className={styles.container}>
             <div className={styles.header}>
-                <a href="/" className={styles.backLink}>
+                <Link href="/" className={styles.backLink}>
                     ← 목록
-                </a>
+                </Link>
                 <div>
                     <h1 className={styles.title}>회의록 검색</h1>
                     <p className={styles.subtitle}>
