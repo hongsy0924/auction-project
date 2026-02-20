@@ -1,52 +1,79 @@
 .container {
-    margin-top: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+}
+
+.pageNumbers {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.pageButton,
+.pageButtonActive,
+.ellipsisButton {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
-.button {
-    padding: 6px 12px;
-    font-size: 13px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    background: var(--bg-secondary);
-    color: var(--foreground);
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: var(--radius-md);
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-}
-
-.button:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--border-hover);
+    transition: var(--transition-base);
+    border: 1.5px solid transparent;
 }
 
 .pageButton {
-    composes: button;
-    min-width: 36px;
-    text-align: center;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+}
+
+.pageButton:hover {
+    background: var(--bg-hover);
+    color: var(--text-main);
+    border-color: var(--border-color);
 }
 
 .pageButtonActive {
-    composes: pageButton;
     background: var(--primary);
     color: #fff;
-    border-color: var(--primary);
-    font-weight: 700;
     cursor: default;
 }
 
-.pageButtonActive:hover {
-    background: var(--primary);
+.ellipsisButton {
+    color: var(--text-light);
+    cursor: default;
+    background: transparent;
 }
 
 .navButton {
-    composes: button;
-    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition-base);
 }
 
-.ellipsis {
-    padding: 4px 8px;
-    color: var(--text-muted);
+.navButton:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-main);
+    border-color: var(--text-light);
+}
+
+.navButton:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }

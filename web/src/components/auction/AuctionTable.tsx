@@ -9,6 +9,7 @@ interface AuctionTableProps {
     stickyColumns: Record<string, number>;
     keyword: string;
     onReset: () => void;
+    loading?: boolean;
 }
 
 export default function AuctionTable({
@@ -17,13 +18,64 @@ export default function AuctionTable({
     stickyColumns,
     keyword,
     onReset,
+    loading = false,
 }: AuctionTableProps) {
+    if (loading) {
+        return (
+            <div className={styles.wrapper}>
+                <table className={styles.table}>
+                    <thead>
+                        <tr>
+                            {columns.map((col) => {
+                                const isFrozen = col in stickyColumns;
+                                return (
+                                    <th
+                                        key={col}
+                                        className={isFrozen ? styles.headerCellFrozen : styles.headerCell}
+                                        style={{
+                                            left: isFrozen ? stickyColumns[col] : undefined,
+                                            width: COLUMN_WIDTHS[col] || "auto",
+                                        }}
+                                    >
+                                        {col}
+                                    </th>
+                                );
+                            })}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {Array.from({ length: 10 }).map((_, i) => (
+                            <tr key={i} className={styles.row}>
+                                {columns.map((col) => {
+                                    const isFrozen = col in stickyColumns;
+                                    return (
+                                        <td
+                                            key={col}
+                                            className={isFrozen ? styles.cellFrozen : styles.cell}
+                                            style={{
+                                                left: isFrozen ? stickyColumns[col] : undefined,
+                                            }}
+                                        >
+                                            <div className="skeleton" style={{ height: "20px", width: "80%" }}></div>
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
+
     if (!data.length) {
         return (
             <div className={styles.emptyState}>
-                검색 결과가 없습니다.
+                <div style={{ fontSize: "40px", marginBottom: "16px" }}>🔍</div>
+                <div style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-main)" }}>검색 결과가 없습니다.</div>
+                <div style={{ color: "var(--text-muted)", marginTop: "4px" }}>다양한 검색어로 소중한 정보를 찾아보세요.</div>
                 {keyword && (
-                    <div>
+                    <div style={{ marginTop: "20px" }}>
                         <button onClick={onReset} className={styles.emptyResetButton}>
                             검색 초기화
                         </button>
