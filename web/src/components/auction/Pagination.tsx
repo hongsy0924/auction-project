@@ -8,8 +8,6 @@ interface PaginationProps {
     onPageChange: (page: number) => void;
 }
 
-const MAX_PAGE_BUTTONS = 20;
-
 export default function Pagination({
     page,
     totalPages,

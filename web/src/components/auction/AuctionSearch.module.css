@@ -41,10 +41,10 @@
 
 .input {
   width: 100%;
-  padding: 12px 42px;
-  border: 1.5px solid var(--border-color);
+  padding: 8px 36px;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  font-size: 15px;
+  font-size: 13px;
   font-family: inherit;
   color: var(--text-main);
   background: var(--background);
@@ -70,12 +70,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 24px;
+  padding: 8px 16px;
   background: var(--primary);
   color: #fff;
   border: none;
   border-radius: var(--radius-md);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition-base);
@@ -95,12 +95,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
+  padding: 8px 16px;
   background: var(--bg-secondary);
   color: var(--text-muted);
-  border: 1.5px solid var(--border-color);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition-base);

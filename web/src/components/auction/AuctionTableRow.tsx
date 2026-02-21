@@ -55,6 +55,7 @@ function AuctionTableRow({
                 }
 
                 const isFrozen = col in stickyColumns;
+                const isNumeric = numberColumns.includes(col) || col === "%";
 
                 return (
                     <td
@@ -64,6 +65,7 @@ function AuctionTableRow({
                             left: isFrozen ? stickyColumns[col] : undefined,
                             minWidth: COLUMN_WIDTHS[col] || "auto",
                             width: COLUMN_WIDTHS[col] || "auto",
+                            textAlign: isNumeric ? "right" : "left",
                         }}
                     >
                         {highlightKeyword(String(value), keyword)}
