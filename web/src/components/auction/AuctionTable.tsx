@@ -92,6 +92,7 @@ export default function AuctionTable({
                     <tr>
                         {columns.map((col) => {
                             const isFrozen = col in stickyColumns;
+                            const isNumeric = (NUMBER_COLUMNS as unknown as string[]).includes(col) || col === "%";
                             return (
                                 <th
                                     key={col}
@@ -102,6 +103,7 @@ export default function AuctionTable({
                                         left: isFrozen ? stickyColumns[col] : undefined,
                                         minWidth: COLUMN_WIDTHS[col] || "auto",
                                         width: COLUMN_WIDTHS[col] || "auto",
+                                        textAlign: isNumeric ? "right" : "left",
                                     }}
                                 >
                                     {col}
