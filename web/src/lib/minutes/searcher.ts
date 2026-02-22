@@ -205,6 +205,7 @@ export async function nativeHybridSearch(query: string, details: MinuteDetail[])
 
         const allEmbeddings: number[][] = [];
         const BATCH_SIZE = 100;
+        const DELAY_MS = 1500;
 
         for (let i = 0; i < textsToEmbed.length; i += BATCH_SIZE) {
             const batch = textsToEmbed.slice(i, i + BATCH_SIZE);
@@ -221,6 +222,10 @@ export async function nativeHybridSearch(query: string, details: MinuteDetail[])
                     allEmbeddings.push(values);
                 }
             });
+
+            if (i + BATCH_SIZE < textsToEmbed.length) {
+                await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+            }
         }
 
         const queryEmbedding = allEmbeddings[0];
