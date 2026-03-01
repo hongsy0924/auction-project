@@ -4,6 +4,9 @@ __pycache__/
 
 # Scraper output and cache
 crawler/data/
+crawler/auction-database/
+crawler/cache/
+crawler/output/
 
 # Next.js / Web
 web/.next/
