@@ -61,8 +61,11 @@ FLY_APP="applemango"
 if command -v flyctl &> /dev/null && [ -n "${FLY_API_TOKEN:-}" ]; then
     export FLY_ACCESS_TOKEN="$FLY_API_TOKEN"
     
+    # Fly.io 앱이 stopped 상태일 수 있으므로 먼저 시작
+    flyctl machines start -a "$FLY_APP" --select 2>/dev/null || true
+    sleep 10
+    
     # Fly.io 앱의 /data/ 디렉토리로 DB 파일 전송
-    # sftp 대신 machine exec + scp 방식 사용
     flyctl ssh sftp shell -a "$FLY_APP" <<SFTP
 put $OUTPUT_DB /data/auction_data.db
 SFTP
