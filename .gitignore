@@ -23,3 +23,7 @@ crawler/chromedriver/
 # SQLite temp files
 *.db-shm
 *.db-wal
+
+# macOS duplicate files (Finder copy artifacts)
+*\ 2.*
+*\ 3.*
