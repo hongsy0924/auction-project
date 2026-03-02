@@ -66,6 +66,9 @@ if command -v flyctl &> /dev/null && [ -n "${FLY_API_TOKEN:-}" ]; then
     flyctl machines start "$FLY_MACHINE_ID" -a "$FLY_APP" 2>/dev/null || true
     sleep 15
     
+    # 기존 DB 삭제 (sftp put은 덮어쓰기 불가)
+    flyctl ssh console -a "$FLY_APP" -C "rm -f /data/auction_data.db" 2>/dev/null || true
+    
     # Fly.io 앱의 /data/ 디렉토리로 DB 파일 전송
     flyctl ssh sftp shell -a "$FLY_APP" <<SFTP
 put $OUTPUT_DB /data/auction_data.db
