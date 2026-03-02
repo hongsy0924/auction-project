@@ -62,8 +62,9 @@ if command -v flyctl &> /dev/null && [ -n "${FLY_API_TOKEN:-}" ]; then
     export FLY_ACCESS_TOKEN="$FLY_API_TOKEN"
     
     # Fly.io 앱이 stopped 상태일 수 있으므로 먼저 시작
-    flyctl machines start -a "$FLY_APP" --select 2>/dev/null || true
-    sleep 10
+    FLY_MACHINE_ID="d89954db022e78"
+    flyctl machines start "$FLY_MACHINE_ID" -a "$FLY_APP" 2>/dev/null || true
+    sleep 15
     
     # Fly.io 앱의 /data/ 디렉토리로 DB 파일 전송
     flyctl ssh sftp shell -a "$FLY_APP" <<SFTP
