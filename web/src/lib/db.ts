@@ -7,7 +7,7 @@ import path from "path";
 import fs from "fs";
 
 /** Absolute path to the SQLite database file. */
-export const DB_PATH = path.join(process.cwd(), "database/auction_data.db");
+export const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), "database/auction_data.db");
 
 /** Column names (한글) in auction_list_cleaned used for keyword search. */
 export const SEARCH_COLUMNS = [
