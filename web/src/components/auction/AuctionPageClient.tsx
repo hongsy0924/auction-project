@@ -12,9 +12,10 @@ import AuctionSearch from "./AuctionSearch";
 import AuctionTable from "./AuctionTable";
 import Pagination from "./Pagination";
 import SignalTopTab from "./SignalTopTab";
-import { LayoutGrid, Search, TrendingUp } from "lucide-react";
+import MinutesSearchPage from "../minutes/MinutesSearchPage";
+import { LayoutGrid, TrendingUp, MessageSquare } from "lucide-react";
 
-type TabId = "auction-list" | "signal-top";
+type TabId = "auction-list" | "signal-top" | "minutes";
 
 export default function AuctionPageClient() {
     const [activeTab, setActiveTab] = useState<TabId>("auction-list");
@@ -112,27 +113,6 @@ export default function AuctionPageClient() {
                             )}
                         </h1>
                     </div>
-                    <a
-                        href="/minutes"
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            padding: "10px 18px",
-                            fontSize: "14px",
-                            color: "var(--primary)",
-                            background: "var(--primary-soft)",
-                            borderRadius: "var(--radius-md)",
-                            textDecoration: "none",
-                            fontWeight: 600,
-                            transition: "var(--transition-base)",
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.filter = "brightness(0.95)"}
-                        onMouseLeave={(e) => e.currentTarget.style.filter = "none"}
-                    >
-                        <Search size={16} />
-                        회의록 검색
-                    </a>
                 </div>
                 <nav style={{
                     display: "flex",
@@ -142,6 +122,7 @@ export default function AuctionPageClient() {
                     {([
                         { id: "auction-list" as TabId, label: "경매 목록", icon: <LayoutGrid size={15} /> },
                         { id: "signal-top" as TabId, label: "투자 시그널", icon: <TrendingUp size={15} /> },
+                        { id: "minutes" as TabId, label: "회의록 검색", icon: <MessageSquare size={15} /> },
                     ]).map((tab) => (
                         <button
                             key={tab.id}
@@ -169,7 +150,7 @@ export default function AuctionPageClient() {
                 </nav>
             </header>
 
-            {activeTab === "auction-list" ? (
+            {activeTab === "auction-list" && (
                 <main style={{
                     background: "var(--bg-secondary)",
                     borderRadius: "var(--radius-lg)",
@@ -208,9 +189,9 @@ export default function AuctionPageClient() {
                         </div>
                     )}
                 </main>
-            ) : (
-                <SignalTopTab />
             )}
+            {activeTab === "signal-top" && <SignalTopTab />}
+            {activeTab === "minutes" && <MinutesSearchPage embedded />}
         </div>
     );
 }
