@@ -14,6 +14,8 @@ const CACHE_DB_PATH = process.env.MINUTES_CACHE_PATH ||
 const SEARCH_TTL = 24 * 60 * 60 * 1000;   // 24 hours
 const DETAIL_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days (historical data rarely changes)
 const EMBEDDING_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SIGNAL_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+const LURIS_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 let db: sqlite3.Database | null = null;
 let initialized = false;
@@ -76,6 +78,23 @@ async function ensureInitialized(): Promise<void> {
         chunk_hash TEXT PRIMARY KEY,
         embedding TEXT NOT NULL,
         created_at INTEGER NOT NULL
+    )`);
+
+    await runAsync(`CREATE TABLE IF NOT EXISTS region_signals (
+        council_code TEXT NOT NULL,
+        dong_name TEXT NOT NULL DEFAULT '',
+        keyword TEXT NOT NULL,
+        signal_summary TEXT,
+        doc_ids TEXT,
+        doc_count INTEGER DEFAULT 0,
+        last_updated INTEGER NOT NULL,
+        PRIMARY KEY (council_code, dong_name, keyword)
+    )`);
+
+    await runAsync(`CREATE TABLE IF NOT EXISTS luris_cache (
+        pnu TEXT PRIMARY KEY,
+        facilities TEXT,
+        last_updated INTEGER NOT NULL
     )`);
 
     initialized = true;
@@ -190,6 +209,107 @@ export async function setCachedEmbeddings(entries: { hash: string; embedding: nu
     });
 }
 
+// --- Region Signals Cache ---
+
+export interface RegionSignal {
+    council_code: string;
+    dong_name: string;
+    keyword: string;
+    signal_summary: string | null;
+    doc_ids: string | null;
+    doc_count: number;
+    last_updated: number;
+}
+
+export async function getRegionSignals(councilCode: string, dongName?: string): Promise<RegionSignal[]> {
+    await ensureInitialized();
+    const now = Date.now();
+
+    if (dongName) {
+        return allAsync<RegionSignal>(
+            `SELECT * FROM region_signals WHERE council_code = ? AND dong_name = ? AND ? - last_updated <= ?`,
+            [councilCode, dongName, now, SIGNAL_TTL]
+        );
+    }
+    return allAsync<RegionSignal>(
+        `SELECT * FROM region_signals WHERE council_code = ? AND ? - last_updated <= ?`,
+        [councilCode, now, SIGNAL_TTL]
+    );
+}
+
+export async function setRegionSignals(entries: {
+    council_code: string;
+    dong_name: string;
+    keyword: string;
+    signal_summary?: string;
+    doc_ids?: string[];
+    doc_count: number;
+}[]): Promise<void> {
+    await ensureInitialized();
+    if (entries.length === 0) return;
+
+    const now = Date.now();
+    const d = getDb();
+
+    return new Promise((resolve, reject) => {
+        d.serialize(() => {
+            d.run("BEGIN TRANSACTION");
+            const stmt = d.prepare(
+                `INSERT OR REPLACE INTO region_signals
+                 (council_code, dong_name, keyword, signal_summary, doc_ids, doc_count, last_updated)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`
+            );
+            for (const e of entries) {
+                stmt.run(
+                    e.council_code,
+                    e.dong_name,
+                    e.keyword,
+                    e.signal_summary || null,
+                    e.doc_ids ? JSON.stringify(e.doc_ids) : null,
+                    e.doc_count,
+                    now
+                );
+            }
+            stmt.finalize();
+            d.run("COMMIT", (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+    });
+}
+
+// --- LURIS Cache ---
+
+export interface CachedLurisFacility {
+    facilityName: string;
+    facilityType: string;
+    decisionDate?: string;
+    executionStatus?: string;
+}
+
+export async function getCachedLuris(pnu: string): Promise<CachedLurisFacility[] | null> {
+    await ensureInitialized();
+    const row = await getAsync<{ facilities: string; last_updated: number }>(
+        "SELECT facilities, last_updated FROM luris_cache WHERE pnu = ?",
+        [pnu]
+    );
+    if (!row) return null;
+    if (Date.now() - row.last_updated > LURIS_TTL) {
+        await runAsync("DELETE FROM luris_cache WHERE pnu = ?", [pnu]);
+        return null;
+    }
+    return JSON.parse(row.facilities);
+}
+
+export async function setCachedLuris(pnu: string, facilities: CachedLurisFacility[]): Promise<void> {
+    await ensureInitialized();
+    await runAsync(
+        "INSERT OR REPLACE INTO luris_cache (pnu, facilities, last_updated) VALUES (?, ?, ?)",
+        [pnu, JSON.stringify(facilities), Date.now()]
+    );
+}
+
 // --- Cleanup ---
 
 export async function cleanExpiredCache(): Promise<void> {
@@ -198,4 +318,6 @@ export async function cleanExpiredCache(): Promise<void> {
     await runAsync("DELETE FROM search_cache WHERE ? - created_at > ?", [now, SEARCH_TTL]);
     await runAsync("DELETE FROM detail_cache WHERE ? - created_at > ?", [now, DETAIL_TTL]);
     await runAsync("DELETE FROM embedding_cache WHERE ? - created_at > ?", [now, EMBEDDING_TTL]);
+    await runAsync("DELETE FROM region_signals WHERE ? - last_updated > ?", [now, SIGNAL_TTL]);
+    await runAsync("DELETE FROM luris_cache WHERE ? - last_updated > ?", [now, LURIS_TTL]);
 }

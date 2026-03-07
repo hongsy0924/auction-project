@@ -25,6 +25,12 @@ export interface AuctionItem {
     담당법원?: string;
     담당계?: string;
     전화번호?: string;
+    시도?: string;
+    시군구?: string;
+    동?: string;
+    PNU?: string;
+    경도?: string;
+    위도?: string;
     [key: string]: string | number | undefined;
 }
 

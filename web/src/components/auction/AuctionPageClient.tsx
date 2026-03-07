@@ -20,6 +20,7 @@ export default function AuctionPageClient() {
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [appliedKeyword, setAppliedKeyword] = useState("");
+    const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -67,6 +68,11 @@ export default function AuctionPageClient() {
     const handleReset = () => {
         setPage(1);
         setAppliedKeyword("");
+    };
+
+    const handleRowClick = (row: AuctionItem) => {
+        const docId = String(row["고유키"] || "");
+        setExpandedDocId((prev) => (prev === docId ? null : docId));
     };
 
     return (
@@ -148,6 +154,8 @@ export default function AuctionPageClient() {
                     keyword={appliedKeyword}
                     onReset={handleReset}
                     loading={loading}
+                    expandedDocId={expandedDocId}
+                    onRowClick={handleRowClick}
                 />
 
                 {!loading && (

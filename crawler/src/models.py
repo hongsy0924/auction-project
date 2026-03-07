@@ -117,4 +117,10 @@ COLUMN_MAPPING: dict[str, str] = {
     "jpDeptNm": "담당계",
     "tel": "전화번호",
     "docid": "고유키",
+    "hjguSido": "시도",
+    "hjguSigu": "시군구",
+    "hjguDong": "동",
+    "pnu": "PNU",
+    "wgs84Xcordi": "경도",
+    "wgs84Ycordi": "위도",
 }

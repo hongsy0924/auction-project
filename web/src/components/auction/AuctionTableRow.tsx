@@ -8,6 +8,8 @@ interface AuctionTableRowProps {
     stickyColumns: Record<string, number>;
     keyword: string;
     numberColumns: string[];
+    isExpanded: boolean;
+    onRowClick: (row: AuctionItem) => void;
 }
 
 function highlightKeyword(text: string, keyword: string) {
@@ -31,14 +33,13 @@ function AuctionTableRow({
     stickyColumns,
     keyword,
     numberColumns,
+    isExpanded,
+    onRowClick,
 }: AuctionTableRowProps) {
     return (
         <tr
-            className={styles.row}
-            onClick={() => {
-                // Placeholder for detail view or row action
-                console.log("Row clicked:", row["사건번호"]);
-            }}
+            className={`${styles.row} ${isExpanded ? styles.rowSelected : ""}`}
+            onClick={() => onRowClick(row)}
         >
             {columns.map((col, j) => {
                 let value: string | number | undefined = row[col];
