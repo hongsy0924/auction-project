@@ -161,6 +161,68 @@ Instructions:
 `;
 }
 
+export function buildPropertyAnalysisPrompt(context: {
+    address: string;
+    dong: string;
+    pnu: string;
+    urbanFacilities: { facilityName: string; facilityType: string; decisionDate?: string; executionStatus?: string }[];
+    minutes: { date: string; meeting: string; content: string }[];
+}): string {
+    const facilityList = context.urbanFacilities.length > 0
+        ? context.urbanFacilities
+            .map((f) => `- ${f.facilityType}: ${f.facilityName} (결정일: ${f.decisionDate || "불명"}, 상태: ${f.executionStatus || "불명"})`)
+            .join("\n")
+        : "- 도시계획시설 정보 없음";
+
+    const minutesList = context.minutes
+        .map((m) => `[${m.date}] [${m.meeting}]\n${m.content}\n---`)
+        .join("\n\n");
+
+    return `${SYSTEM_PROMPT}
+
+## 분석 대상 물건
+- 주소: ${context.address}
+- 행정동/면: ${context.dong}
+- PNU: ${context.pnu}
+
+## 이 필지의 도시계획시설 현황 (LURIS)
+${facilityList}
+
+## 관련 지방의회 회의록 발췌
+${minutesList || "관련 회의록 없음"}
+
+## 분석 요청
+
+이 경매 물건에 대해 다음을 분석해주세요:
+
+1. **사업 연결 분석**: 위 회의록에서 이 물건의 소재지(${context.dong})와 관련된 공공사업 시그널을 추출하세요.
+2. **교차 검증**: 도시계획시설 현황과 회의록 내용을 교차 검증하여, 이 물건이 영향받을 가능성을 평가하세요.
+3. **투자 인사이트**: 투자 판단에 도움이 될 핵심 정보를 요약하세요.
+
+출력 형식 (마크다운):
+
+**📍 물건 위치 분석**
+- (이 물건의 위치와 도시계획시설과의 관계)
+
+**📌 사업 시그널**
+- (회의록에서 발견된 관련 사업 논의)
+
+**💰 보상/편입 가능성**
+- (토지보상, 편입 관련 시그널 및 가능성 평가)
+
+**⏱️ 사업 진행 타임라인**
+- (시간순으로 정리된 사업 진행 현황)
+
+**⚠️ 리스크 요소**
+- (투자 시 주의해야 할 점)
+
+**🔍 종합 판단**
+- (이 물건의 투자 가치에 대한 종합 의견)
+
+한국어로 간결하고 구체적으로 작성하세요. 제공된 자료에 근거하여 답변하세요.
+`;
+}
+
 export async function summarizeMinutes(
     query: string,
     minutes: { date: string; meeting: string; content: string }[],

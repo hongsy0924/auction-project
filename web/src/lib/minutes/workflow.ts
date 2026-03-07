@@ -1,5 +1,5 @@
 import { ClikClient } from "./clik-client";
-import { parseQuery, summarizeMinutesStream } from "./llm";
+import { parseQuery, summarizeMinutesStream, buildPropertyAnalysisPrompt } from "./llm";
 import { nativeHybridSearch } from "./searcher";
 import { findCouncilId } from "./councils";
 import {
@@ -7,6 +7,7 @@ import {
     getCachedDetail, setCachedDetail,
 } from "./cache";
 import type { MinuteListItem, MinuteDetail } from "./types";
+import type { UrbanPlanFacility } from "../luris/client";
 
 export interface ProgressEvent {
     type: "progress" | "partial_result" | "done";
@@ -261,5 +262,178 @@ export class MinutesService {
 
         merged.sort((a, b) => b.MTG_DE.localeCompare(a.MTG_DE));
         return merged;
+    }
+
+    /**
+     * Property-specific analysis: searches council minutes for signals
+     * relevant to a specific auction property, then generates an AI analysis.
+     *
+     * Uses dong/myeon name + LURIS facility names as search keywords
+     * instead of LLM-parsed user query.
+     */
+    async processPropertyAnalysis(
+        address: string,
+        dong: string,
+        pnu: string,
+        councilCodes: string[],
+        urbanFacilities: UrbanPlanFacility[],
+        onProgress?: ProgressCallback
+    ): Promise<string> {
+        const TOTAL_STEPS = 5;
+        const emit = (step: number, message: string, type: ProgressEvent["type"] = "progress", data?: string) => {
+            onProgress?.({ type, step, totalSteps: TOTAL_STEPS, message, data });
+        };
+
+        // ── Step 1: Generate search keywords ────────────────────────────
+        emit(1, "검색어 생성 중...");
+        const keywords: string[] = [];
+
+        // Add dong/myeon name-based keywords
+        if (dong) {
+            keywords.push(dong);
+            for (const suffix of ["도로", "보상", "개발", "택지"]) {
+                keywords.push(`${dong} ${suffix}`);
+            }
+        }
+
+        // Add LURIS facility names as keywords
+        for (const f of urbanFacilities) {
+            if (f.facilityName) {
+                keywords.push(f.facilityName);
+            }
+        }
+
+        // Deduplicate
+        const uniqueKeywords = [...new Set(keywords)];
+        if (uniqueKeywords.length === 0) {
+            const msg = "검색 키워드를 생성할 수 없습니다. 주소 정보가 부족합니다.";
+            emit(1, msg, "done", msg);
+            return msg;
+        }
+
+        emit(1, `검색어 ${uniqueKeywords.length}개 생성 완료`);
+        console.log(`[PropertyAnalysis] Keywords: ${uniqueKeywords.join(", ")}`);
+
+        // ── Step 2: Search CLIK API per council (parallel) ──────────────
+        emit(2, `${councilCodes.length}개 의회에서 검색 중...`);
+
+        const allItems: MinuteListItem[] = [];
+        const seenDocIds = new Set<string>();
+
+        // Search each council with all keywords
+        const searchPromises = councilCodes.flatMap((councilCode) =>
+            uniqueKeywords.slice(0, 5).map(async (keyword) => { // Limit to 5 keywords per council
+                try {
+                    const cached = await getCachedSearch(keyword, councilCode);
+                    if (cached) return cached as MinuteListItem[];
+
+                    const result = await this.clikClient.searchMinutes({
+                        keyword,
+                        councilCode,
+                        listCount: 20,
+                    });
+                    setCachedSearch(keyword, councilCode, result.items).catch(() => {});
+                    return result.items;
+                } catch {
+                    return [];
+                }
+            })
+        );
+
+        const searchResults = await Promise.all(searchPromises);
+        for (const items of searchResults) {
+            for (const item of items) {
+                if (!seenDocIds.has(item.DOCID)) {
+                    seenDocIds.add(item.DOCID);
+                    allItems.push(item);
+                }
+            }
+        }
+
+        if (allItems.length === 0) {
+            const msg = "관련 회의록을 찾지 못했습니다.";
+            emit(2, msg, "done", msg);
+            return msg;
+        }
+
+        allItems.sort((a, b) => b.MTG_DE.localeCompare(a.MTG_DE));
+        emit(2, `${allItems.length}건의 회의록 발견`);
+
+        // ── Step 3: Fetch details (top 15, cached) ──────────────────────
+        const itemsToFetch = allItems.slice(0, 15);
+        emit(3, `상세 본문 가져오는 중 (${itemsToFetch.length}건)...`);
+
+        const details = await this.fetchDetailsWithCache(itemsToFetch);
+        if (details.length === 0) {
+            const msg = "회의록 본문을 가져오지 못했습니다.";
+            emit(3, msg, "done", msg);
+            return msg;
+        }
+
+        emit(3, `상세 본문 ${details.length}건 확보 완료`);
+
+        // ── Step 4: Hybrid search (BM25 + embeddings) ───────────────────
+        // Build a focused query combining dong name and facility names
+        const searchQuery = [dong, ...urbanFacilities.map((f) => f.facilityName)].filter(Boolean).join(" ");
+        emit(4, "관련 내용 분석 중...");
+
+        let searchChunks: {
+            text: string;
+            speaker: string | null;
+            agendaContext: string | null;
+            score: number;
+            docId: string;
+            meetingName: string;
+            meetingDate: string;
+        }[] = [];
+
+        try {
+            const res = await nativeHybridSearch(searchQuery, details);
+            searchChunks = res.results;
+        } catch (e) {
+            console.error("[PropertyAnalysis] Search failed", e);
+        }
+
+        emit(4, `${searchChunks.length}개 관련 구간 발견`);
+
+        // ── Step 5: LLM Analysis (streamed) ─────────────────────────────
+        emit(5, "AI 분석 결과 생성 중...");
+
+        const minutesForPrompt = searchChunks.map((r) => ({
+            date: r.meetingDate,
+            meeting: r.meetingName,
+            content: r.text,
+        }));
+
+        // Use the property-specific prompt instead of generic summarization
+        const prompt = buildPropertyAnalysisPrompt({
+            address,
+            dong,
+            pnu,
+            urbanFacilities,
+            minutes: minutesForPrompt,
+        });
+
+        const { GoogleGenAI } = await import("@google/genai");
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) throw new Error("GEMINI_API_KEY not set");
+        const ai = new GoogleGenAI({ apiKey });
+
+        let fullText = "";
+        const response = await ai.models.generateContentStream({
+            model: "gemini-3.1-pro-preview",
+            contents: prompt,
+        });
+
+        for await (const chunk of response) {
+            const text = chunk.text;
+            if (text) {
+                fullText += text;
+                emit(5, "AI 분석 결과 생성 중...", "partial_result", fullText);
+            }
+        }
+
+        emit(5, "분석 완료", "done", fullText || "분석 결과를 생성할 수 없습니다.");
+        return fullText || "분석 결과를 생성할 수 없습니다.";
     }
 }

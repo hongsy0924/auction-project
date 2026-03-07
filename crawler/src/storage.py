@@ -43,30 +43,42 @@ async def enrich_with_land_use(
             batch_results = await process_batch(generator, df, start_idx, batch_size)
             for result in batch_results:
                 original_data = df.iloc[result['original_index']].to_dict()
-                if result.get('error') and not any([
-                    result.get('land_use_1'),
-                    result.get('land_use_2'),
-                    result.get('land_use_3'),
-                ]):
-                    failed_cases.append({**original_data, 'error': result['error']})
-                else:
-                    land_use_1 = result.get('land_use_1', '')
-                    land_use_2 = result.get('land_use_2', '')
-                    land_use_3 = result.get('land_use_3', '')
-                    combined = ', '.join([v for v in [land_use_1, land_use_2, land_use_3] if v])
-                    all_results.append({
+                land_use_1 = result.get('land_use_1', '')
+                land_use_2 = result.get('land_use_2', '')
+                land_use_3 = result.get('land_use_3', '')
+                combined = ', '.join([v for v in [land_use_1, land_use_2, land_use_3] if v])
+
+                # PNU 실패/API 오류와 관계없이 항상 메인 결과에 포함
+                all_results.append({
+                    **original_data,
+                    'pnu': result.get('pnu', ''),
+                    'land_use_1': land_use_1,
+                    'land_use_2': land_use_2,
+                    'land_use_3': land_use_3,
+                    'land_use_combined': combined,
+                })
+
+                # 실패 케이스는 별도 기록 (디버깅용)
+                if result.get('error'):
+                    failed_cases.append({
                         **original_data,
                         'pnu': result.get('pnu', ''),
-                        'land_use_1': land_use_1,
-                        'land_use_2': land_use_2,
-                        'land_use_3': land_use_3,
-                        'land_use_combined': combined,
+                        'error': result['error'],
                     })
             await asyncio.sleep(request_delay)
         except Exception as e:
             logger.error(f"배치 처리 중 오류 발생: {e}")
             for idx in range(start_idx, min(start_idx + batch_size, len(df))):
                 data_dict = cast(dict[str, Any], df.iloc[idx].to_dict())
+                # 배치 전체 오류도 메인 결과에 포함 (토지이용 공란)
+                all_results.append({
+                    **data_dict,
+                    'pnu': '',
+                    'land_use_1': '',
+                    'land_use_2': '',
+                    'land_use_3': '',
+                    'land_use_combined': '',
+                })
                 failed_cases.append({**data_dict, 'error': str(e)})
 
     if all_results:

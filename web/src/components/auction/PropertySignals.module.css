@@ -1,0 +1,273 @@
+.container {
+    padding: 20px 24px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-light);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.address {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.pnu {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+
+.sections {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.section {
+    padding: 14px 16px;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md, 8px);
+}
+
+.sectionLabel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 8px;
+}
+
+.councilList {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.councilBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.signalItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--text-main);
+}
+
+.signalDot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary);
+    flex-shrink: 0;
+}
+
+.noSignals {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.facilityItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.facilityItem:last-child {
+    border-bottom: none;
+}
+
+.facilityName {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-main);
+}
+
+.facilityMeta {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.facilityBadge {
+    display: inline-flex;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.facilityBadgeActive {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.facilityBadgePending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.analyzeButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md, 8px);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-base, 0.15s ease);
+    width: 100%;
+    justify-content: center;
+}
+
+.analyzeButton:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+.analyzeButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.resultCard {
+    margin-top: 12px;
+    padding: 16px;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md, 8px);
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-main);
+}
+
+.resultCard h1, .resultCard h2, .resultCard h3, .resultCard h4 {
+    margin: 16px 0 8px;
+    color: var(--text-main);
+}
+
+.resultCard h1 { font-size: 18px; }
+.resultCard h2 { font-size: 16px; }
+.resultCard h3 { font-size: 15px; }
+
+.resultCard ul, .resultCard ol {
+    padding-left: 20px;
+    margin: 8px 0;
+}
+
+.resultCard li {
+    margin: 4px 0;
+}
+
+.resultCard strong {
+    color: var(--primary);
+}
+
+.resultCard code {
+    background: var(--bg-hover, #f1f5f9);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.resultCard blockquote {
+    border-left: 3px solid var(--primary);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: var(--text-muted);
+}
+
+.progressSteps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.progressStep {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 4px 0;
+}
+
+.stepDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-color);
+}
+
+.step_pending {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.step_active {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.step_done {
+    color: var(--text-muted);
+}
+
+.spinIcon {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.miniSpinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+.loadingDots {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.errorText {
+    font-size: 13px;
+    color: #dc2626;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}

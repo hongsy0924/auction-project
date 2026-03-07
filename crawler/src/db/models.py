@@ -209,6 +209,12 @@ class AuctionCleaned(Base):
     담당법원 = Column("담당법원", Text)
     담당계 = Column("담당계", Text)
     전화번호 = Column("전화번호", Text)
+    시도 = Column("시도", Text)
+    시군구 = Column("시군구", Text)
+    동 = Column("동", Text)
+    PNU = Column("PNU", Text)
+    경도 = Column("경도", Text)
+    위도 = Column("위도", Text)
 
     def __repr__(self) -> str:
         return f"<AuctionCleaned(사건번호={self.사건번호!r}, 주소={self.주소!r})>"

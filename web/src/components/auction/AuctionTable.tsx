@@ -2,6 +2,7 @@ import React from "react";
 import styles from "./AuctionTable.module.css";
 import { AuctionItem, NUMBER_COLUMNS, COLUMN_WIDTHS } from "@/types/auction";
 import AuctionTableRow from "./AuctionTableRow";
+import PropertySignals from "./PropertySignals";
 
 interface AuctionTableProps {
     data: AuctionItem[];
@@ -10,6 +11,8 @@ interface AuctionTableProps {
     keyword: string;
     onReset: () => void;
     loading?: boolean;
+    expandedDocId: string | null;
+    onRowClick: (row: AuctionItem) => void;
 }
 
 export default function AuctionTable({
@@ -19,6 +22,8 @@ export default function AuctionTable({
     keyword,
     onReset,
     loading = false,
+    expandedDocId,
+    onRowClick,
 }: AuctionTableProps) {
     if (loading) {
         return (
@@ -113,16 +118,30 @@ export default function AuctionTable({
                     </tr>
                 </thead>
                 <tbody>
-                    {data.map((row, i) => (
-                        <AuctionTableRow
-                            key={i}
-                            row={row}
-                            columns={columns}
-                            stickyColumns={stickyColumns}
-                            keyword={keyword}
-                            numberColumns={NUMBER_COLUMNS as unknown as string[]}
-                        />
-                    ))}
+                    {data.map((row, i) => {
+                        const docId = String(row["고유키"] || i);
+                        const isExpanded = expandedDocId === docId;
+                        return (
+                            <React.Fragment key={docId}>
+                                <AuctionTableRow
+                                    row={row}
+                                    columns={columns}
+                                    stickyColumns={stickyColumns}
+                                    keyword={keyword}
+                                    numberColumns={NUMBER_COLUMNS as unknown as string[]}
+                                    isExpanded={isExpanded}
+                                    onRowClick={onRowClick}
+                                />
+                                {isExpanded && (
+                                    <tr className={styles.expandedRow}>
+                                        <td colSpan={columns.length} className={styles.expandedCell}>
+                                            <PropertySignals row={row} />
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
                 </tbody>
             </table>
         </div>

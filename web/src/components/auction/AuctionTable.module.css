@@ -128,3 +128,18 @@
     background: var(--primary-hover);
     transform: translateY(-1px);
 }
+
+.rowSelected .cell,
+.rowSelected .cellFrozen {
+    background: var(--primary-soft) !important;
+    border-bottom-color: var(--primary);
+}
+
+.expandedRow {
+    background: var(--bg-tertiary, #f8f9fa);
+}
+
+.expandedCell {
+    padding: 0 !important;
+    border-bottom: 2px solid var(--primary);
+}
