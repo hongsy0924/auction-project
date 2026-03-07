@@ -108,7 +108,7 @@ interface ProgressStep {
 
 const STEP_LABELS = ["쿼리 분석", "회의록 검색", "본문 수집", "관련 내용 분석", "AI 분석 결과 생성"];
 
-export default function MinutesSearchPage() {
+export default function MinutesSearchPage({ embedded = false }: { embedded?: boolean }) {
     const [query, setQuery] = useState("");
     const [result, setResult] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -239,24 +239,26 @@ export default function MinutesSearchPage() {
 
     return (
         <main className={styles.container}>
-            <div className={styles.header}>
-                <Link href="/" className={styles.backLink}>
-                    <ChevronLeft size={16} />
-                    <span>목록으로</span>
-                </Link>
-                <div className={styles.headerContent}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                        <Sparkles size={20} className="text-primary" style={{ color: "var(--primary)" }} />
-                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                            AI Intelligence
-                        </span>
+            {!embedded && (
+                <div className={styles.header}>
+                    <Link href="/" className={styles.backLink}>
+                        <ChevronLeft size={16} />
+                        <span>목록으로</span>
+                    </Link>
+                    <div className={styles.headerContent}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                            <Sparkles size={20} className="text-primary" style={{ color: "var(--primary)" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                AI Intelligence
+                            </span>
+                        </div>
+                        <h1 className={styles.title}>회의록 검색</h1>
+                        <p className={styles.subtitle}>
+                            지방의회 회의록에서 사업 진행 시그널을 스마트하게 찾아보세요
+                        </p>
                     </div>
-                    <h1 className={styles.title}>회의록 검색</h1>
-                    <p className={styles.subtitle}>
-                        지방의회 회의록에서 사업 진행 시그널을 스마트하게 찾아보세요
-                    </p>
                 </div>
-            </div>
+            )}
 
             <section className={styles.searchSection}>
                 <div className={styles.inputWrapper}>
