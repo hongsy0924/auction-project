@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import styles from "./MinutesSearchPage.module.css";
-import { ChevronLeft, Search, Sparkles, MessageSquare, AlertCircle } from "lucide-react";
+import { ChevronLeft, Search, Sparkles, MessageSquare, AlertCircle, Check, Loader } from "lucide-react";
 
 /**
  * Lightweight markdown → HTML converter.
@@ -100,45 +100,142 @@ function inlineFormat(text: string): string {
         .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
+interface ProgressStep {
+    step: number;
+    message: string;
+    status: "pending" | "active" | "done";
+}
+
+const STEP_LABELS = ["쿼리 분석", "회의록 검색", "본문 수집", "관련 내용 분석", "AI 분석 결과 생성"];
+
 export default function MinutesSearchPage() {
     const [query, setQuery] = useState("");
     const [result, setResult] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [steps, setSteps] = useState<ProgressStep[]>([]);
+    const abortRef = useRef<AbortController | null>(null);
 
     const renderedResult = useMemo(
         () => (result ? renderMarkdown(result) : ""),
         [result]
     );
 
-    const handleSearch = async () => {
+    const processSSEEvent = useCallback((event: {
+        type: string;
+        step: number;
+        message: string;
+        data?: string;
+    }) => {
+        if (event.type === "error") {
+            setError(event.message);
+            setLoading(false);
+            return;
+        }
+
+        // Update step progress
+        setSteps((prev: ProgressStep[]) => prev.map((s: ProgressStep) => {
+            if (s.step < event.step) return { ...s, status: "done" as const };
+            if (s.step === event.step) return { ...s, message: event.message, status: "active" as const };
+            return s;
+        }));
+
+        // Handle streaming result
+        if (event.type === "partial_result" && event.data) {
+            setResult(event.data);
+        }
+
+        if (event.type === "done") {
+            if (event.data) setResult(event.data);
+            setSteps((prev: ProgressStep[]) => prev.map((s: ProgressStep) => ({ ...s, status: "done" as const })));
+        }
+    }, []);
+
+    const handleSearch = useCallback(async () => {
         if (!query.trim()) return;
+
+        // Abort any existing request
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
 
         setLoading(true);
         setResult(null);
         setError(null);
+        setSteps(STEP_LABELS.map((label, i) => ({
+            step: i + 1,
+            message: label,
+            status: i === 0 ? "active" : "pending",
+        })));
 
         try {
             const response = await fetch("/api/minutes-search", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query: query.trim() }),
+                signal: controller.signal,
             });
 
-            const data = await response.json();
-
             if (!response.ok) {
-                setError(data.error || "요청에 실패했습니다.");
+                let errorMsg = "요청에 실패했습니다.";
+                try {
+                    const data = await response.json();
+                    errorMsg = data.error || errorMsg;
+                } catch { /* ignore parse error */ }
+                setError(errorMsg);
+                setLoading(false);
                 return;
             }
 
-            setResult(data.result);
-        } catch {
-            setError("서버 연결에 실패했습니다. 다시 시도해주세요.");
+            const reader = response.body?.getReader();
+            if (!reader) {
+                setError("스트리밍 응답을 읽을 수 없습니다.");
+                setLoading(false);
+                return;
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Parse SSE events from buffer
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    const jsonStr = line.slice(6);
+                    if (!jsonStr.trim()) continue;
+
+                    try {
+                        const event = JSON.parse(jsonStr);
+                        processSSEEvent(event);
+                    } catch {
+                        // Ignore malformed JSON
+                    }
+                }
+            }
+
+            // Process any remaining buffer
+            if (buffer.startsWith("data: ")) {
+                try {
+                    const event = JSON.parse(buffer.slice(6));
+                    processSSEEvent(event);
+                } catch { /* ignore */ }
+            }
+        } catch (err) {
+            if ((err as Error).name !== "AbortError") {
+                setError("서버 연결에 실패했습니다. 다시 시도해주세요.");
+            }
         } finally {
             setLoading(false);
         }
-    };
+    }, [query, processSSEEvent]);
 
     return (
         <main className={styles.container}>
@@ -202,13 +299,28 @@ export default function MinutesSearchPage() {
                 </div>
             </section>
 
-            {loading && (
-                <div className={styles.loadingState}>
-                    <div className={styles.spinner} />
-                    <span className={styles.loadingTitle}>회의록을 심층 분석하고 있습니다</span>
-                    <span className={styles.loadingSubtitle}>
-                        지방의회 데이터를 조회하고 인공지능이 핵심 내용을 요약 중입니다 (약 1분 소요)
-                    </span>
+            {loading && steps.length > 0 && (
+                <div className={styles.progressContainer}>
+                    <div className={styles.progressHeader}>
+                        <Sparkles size={16} style={{ color: "var(--primary)" }} />
+                        <span className={styles.progressTitle}>분석 진행 중</span>
+                    </div>
+                    <div className={styles.progressSteps}>
+                        {steps.map((s: ProgressStep) => (
+                            <div key={s.step} className={`${styles.progressStep} ${styles[`step_${s.status}`]}`}>
+                                <div className={styles.stepIcon}>
+                                    {s.status === "done" ? (
+                                        <Check size={14} />
+                                    ) : s.status === "active" ? (
+                                        <Loader size={14} className={styles.spinIcon} />
+                                    ) : (
+                                        <span className={styles.stepDot} />
+                                    )}
+                                </div>
+                                <span className={styles.stepLabel}>{s.message}</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
