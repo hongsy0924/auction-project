@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { MinuteDetail } from "./types";
+import { hashText, getCachedEmbeddings, setCachedEmbeddings } from "./cache";
 
 let genAI: GoogleGenAI | null = null;
 
@@ -59,20 +60,15 @@ function recursiveSplit(text: string, maxSize: number, separators: RegExp[]): st
     if (separators.length === 0) return hardSplit(text, maxSize);
 
     const [currentSep, ...remainingSeps] = separators;
-    // We want to split but keep the separator. In JS split with regex group keeps it in array.
-    // Instead we will split and then re-join if needed. Let's just use simple split.
     const pieces = text.split(currentSep);
 
-    // If the separator includes lookbehinds, split might not eat the char. 
-    // Since JS lookbehinds exist and we use simple strings for boundaries, let's just do a greedy split.
-    // A simpler approximation of the Python recursive split:
     if (pieces.length <= 1) return recursiveSplit(text, maxSize, remainingSeps);
 
     const result: string[] = [];
     let buffer = "";
 
     for (const piece of pieces) {
-        const joiner = buffer ? "\n\n" : ""; // simplify separator
+        const joiner = buffer ? "\n\n" : "";
         if (buffer.length + joiner.length + piece.length <= maxSize) {
             buffer += joiner + piece;
         } else {
@@ -164,7 +160,70 @@ function chunkTranscript(text: string, docId: string, meetingName: string, meeti
     return chunks;
 }
 
-// --- 2. Embedding & Math Vector Search ---
+// --- 2. BM25 Pre-filter ---
+
+function tokenize(text: string): string[] {
+    // Simple Korean-aware tokenization: split on whitespace and punctuation
+    return text
+        .toLowerCase()
+        .replace(/[^\w가-힣\s]/g, " ")
+        .split(/\s+/)
+        .filter(t => t.length >= 2);
+}
+
+function bm25PreFilter(query: string, chunks: Chunk[], topK: number): Chunk[] {
+    const queryTokens = tokenize(query);
+    if (queryTokens.length === 0) return chunks.slice(0, topK);
+
+    // Build document frequency map
+    const df = new Map<string, number>();
+    const chunkTokens: string[][] = [];
+
+    for (const chunk of chunks) {
+        const tokens = tokenize(chunk.text);
+        chunkTokens.push(tokens);
+        const uniqueTokens = new Set(tokens);
+        for (const token of uniqueTokens) {
+            df.set(token, (df.get(token) || 0) + 1);
+        }
+    }
+
+    const N = chunks.length;
+    const avgDl = chunkTokens.reduce((sum, t) => sum + t.length, 0) / N;
+    const k1 = 1.5;
+    const b = 0.75;
+
+    // Score each chunk
+    const scored = chunks.map((chunk, idx) => {
+        const tokens = chunkTokens[idx];
+        const dl = tokens.length;
+
+        // Count term frequencies
+        const tf = new Map<string, number>();
+        for (const token of tokens) {
+            tf.set(token, (tf.get(token) || 0) + 1);
+        }
+
+        let score = 0;
+        for (const qt of queryTokens) {
+            const termDf = df.get(qt) || 0;
+            if (termDf === 0) continue;
+
+            const idf = Math.log((N - termDf + 0.5) / (termDf + 0.5) + 1);
+            const termTf = tf.get(qt) || 0;
+            const tfNorm = (termTf * (k1 + 1)) / (termTf + k1 * (1 - b + b * dl / avgDl));
+            score += idf * tfNorm;
+        }
+
+        return { chunk, score };
+    });
+
+    // Sort by BM25 score and take top K
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, topK).map(s => s.chunk);
+}
+
+// --- 3. Embedding & Cosine Similarity Search (with cache) ---
 
 function cosineSimilarity(a: number[], b: number[]): number {
     let dotProduct = 0;
@@ -198,49 +257,93 @@ export async function nativeHybridSearch(query: string, details: MinuteDetail[])
 
     console.log(`[Searcher] Chunked ${details.length} documents into ${allChunks.length} chunks.`);
 
-    // 2. Embeddings via Gemini
+    // 2. BM25 Pre-filter: narrow down to top 50 candidates
+    const BM25_TOP_K = 50;
+    const candidates = bm25PreFilter(query, allChunks, BM25_TOP_K);
+    console.log(`[Searcher] BM25 pre-filter: ${allChunks.length} → ${candidates.length} candidates`);
+
+    // 3. Embedding with cache
     try {
-        const textsToEmbed = allChunks.map(c => `passage: ${c.text}`);
-        textsToEmbed.unshift(`query: ${query}`); // index 0 is the query
+        // Compute hashes for all candidates
+        const chunkHashes = candidates.map(c => hashText(c.text));
 
-        const allEmbeddings: number[][] = [];
-        const BATCH_SIZE = 100;
-        const DELAY_MS = 1500;
+        // Check embedding cache
+        const cachedEmbeddings = await getCachedEmbeddings(chunkHashes);
+        const cacheHits = cachedEmbeddings.size;
 
-        for (let i = 0; i < textsToEmbed.length; i += BATCH_SIZE) {
-            const batch = textsToEmbed.slice(i, i + BATCH_SIZE);
-            const response = await ai.models.embedContent({
-                model: 'gemini-embedding-001',
-                contents: batch,
-            });
-            if (!response.embeddings || response.embeddings.length !== batch.length) {
-                throw new Error("Missing embeddings from response batch");
-            }
-            batch.forEach((emb, index) => {
-                const values = response.embeddings![index].values;
-                if (values) {
-                    allEmbeddings.push(values);
-                }
-            });
-
-            if (i + BATCH_SIZE < textsToEmbed.length) {
-                await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+        // Determine which chunks need new embeddings
+        const uncachedIndices: number[] = [];
+        for (let i = 0; i < candidates.length; i++) {
+            if (!cachedEmbeddings.has(chunkHashes[i])) {
+                uncachedIndices.push(i);
             }
         }
 
-        const queryEmbedding = allEmbeddings[0];
+        console.log(`[Searcher] Embedding cache: ${cacheHits} hits, ${uncachedIndices.length} misses`);
+
+        // Generate embeddings only for uncached chunks + query
+        const textsToEmbed: string[] = [`query: ${query}`];
+        for (const idx of uncachedIndices) {
+            textsToEmbed.push(`passage: ${candidates[idx].text}`);
+        }
+
+        const newEmbeddings: number[][] = [];
+        if (textsToEmbed.length > 0) {
+            const BATCH_SIZE = 100;
+            const DELAY_MS = 1500;
+
+            for (let i = 0; i < textsToEmbed.length; i += BATCH_SIZE) {
+                const batch = textsToEmbed.slice(i, i + BATCH_SIZE);
+                const response = await ai.models.embedContent({
+                    model: 'gemini-embedding-001',
+                    contents: batch,
+                });
+                if (!response.embeddings || response.embeddings.length !== batch.length) {
+                    throw new Error("Missing embeddings from response batch");
+                }
+                for (const emb of response.embeddings) {
+                    if (emb.values) {
+                        newEmbeddings.push(emb.values);
+                    }
+                }
+
+                if (i + BATCH_SIZE < textsToEmbed.length) {
+                    await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+                }
+            }
+        }
+
+        // Extract query embedding (always index 0)
+        const queryEmbedding = newEmbeddings[0];
         if (!queryEmbedding) throw new Error("Missing query embedding");
 
-        for (let i = 0; i < allChunks.length; i++) {
-            const chunkEmbedding = allEmbeddings[i + 1];
-            if (chunkEmbedding) {
-                allChunks[i].score = cosineSimilarity(queryEmbedding, chunkEmbedding);
+        // Map new embeddings back to chunks and cache them
+        const newEmbeddingEntries: { hash: string; embedding: number[] }[] = [];
+        for (let i = 0; i < uncachedIndices.length; i++) {
+            const chunkIdx = uncachedIndices[i];
+            const embedding = newEmbeddings[i + 1]; // +1 to skip query embedding
+            if (embedding) {
+                cachedEmbeddings.set(chunkHashes[chunkIdx], embedding);
+                newEmbeddingEntries.push({ hash: chunkHashes[chunkIdx], embedding });
             }
         }
 
-        // 3. Sort by Cosine Similarity and take Top 10
-        allChunks.sort((a, b) => b.score - a.score);
-        const topResults = allChunks.slice(0, 10);
+        // Persist new embeddings to cache (fire-and-forget)
+        if (newEmbeddingEntries.length > 0) {
+            setCachedEmbeddings(newEmbeddingEntries).catch(() => {});
+        }
+
+        // 4. Score all candidates by cosine similarity
+        for (let i = 0; i < candidates.length; i++) {
+            const chunkEmbedding = cachedEmbeddings.get(chunkHashes[i]);
+            if (chunkEmbedding) {
+                candidates[i].score = cosineSimilarity(queryEmbedding, chunkEmbedding);
+            }
+        }
+
+        // 5. Sort and return top 10
+        candidates.sort((a, b) => b.score - a.score);
+        const topResults = candidates.slice(0, 10);
 
         const elapsed = Date.now() - start;
         console.log(`[Searcher] Search completed in ${elapsed}ms. Returning ${topResults.length} chunks.`);

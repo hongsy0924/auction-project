@@ -90,16 +90,11 @@ Return ONLY a JSON object:
     }
 }
 
-export async function summarizeMinutes(
+function buildSummarizePrompt(
     query: string,
     minutes: { date: string; meeting: string; content: string }[],
     analysisFocus?: string[]
-): Promise<string> {
-    const ai = getModel();
-    if (minutes.length === 0) {
-        return "관련된 회의록 내용을 찾을 수 없습니다.";
-    }
-
+): string {
     const context = minutes
         .map(
             (m) => `
@@ -127,7 +122,7 @@ Organize your findings chronologically to show the project's progression over ti
 `
         : "";
 
-    const prompt = `${SYSTEM_PROMPT}
+    return `${SYSTEM_PROMPT}
 
 User Query: "${query}"
 
@@ -164,10 +159,58 @@ Instructions:
 4. Provide the answer in Korean, natural and concise.
 5. Base your answers strictly on the provided excerpts.
 `;
+}
 
+export async function summarizeMinutes(
+    query: string,
+    minutes: { date: string; meeting: string; content: string }[],
+    analysisFocus?: string[]
+): Promise<string> {
+    const ai = getModel();
+    if (minutes.length === 0) {
+        return "관련된 회의록 내용을 찾을 수 없습니다.";
+    }
+
+    const prompt = buildSummarizePrompt(query, minutes, analysisFocus);
     const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: prompt
     });
     return response.text || "응답을 생성할 수 없습니다.";
+}
+
+/**
+ * Streaming version of summarizeMinutes.
+ * Calls onToken for each chunk of text as it arrives from the LLM.
+ */
+export async function summarizeMinutesStream(
+    query: string,
+    minutes: { date: string; meeting: string; content: string }[],
+    analysisFocus: string[] | undefined,
+    onToken: (token: string) => void
+): Promise<string> {
+    const ai = getModel();
+    if (minutes.length === 0) {
+        const msg = "관련된 회의록 내용을 찾을 수 없습니다.";
+        onToken(msg);
+        return msg;
+    }
+
+    const prompt = buildSummarizePrompt(query, minutes, analysisFocus);
+
+    const response = await ai.models.generateContentStream({
+        model: "gemini-3.1-pro-preview",
+        contents: prompt
+    });
+
+    let fullText = "";
+    for await (const chunk of response) {
+        const text = chunk.text;
+        if (text) {
+            fullText += text;
+            onToken(text);
+        }
+    }
+
+    return fullText || "응답을 생성할 수 없습니다.";
 }
