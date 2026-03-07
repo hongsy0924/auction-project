@@ -97,6 +97,32 @@ async function ensureInitialized(): Promise<void> {
         last_updated INTEGER NOT NULL
     )`);
 
+    await runAsync(`CREATE TABLE IF NOT EXISTS property_scores (
+        doc_id TEXT PRIMARY KEY,
+        address TEXT NOT NULL,
+        dong TEXT DEFAULT '',
+        pnu TEXT DEFAULT '',
+        sido TEXT DEFAULT '',
+        sigungu TEXT DEFAULT '',
+        score INTEGER NOT NULL DEFAULT 0,
+        signal_count INTEGER DEFAULT 0,
+        signal_keywords TEXT,
+        facility_count INTEGER DEFAULT 0,
+        has_unexecuted INTEGER DEFAULT 0,
+        has_compensation INTEGER DEFAULT 0,
+        signal_details TEXT,
+        facility_details TEXT,
+        auction_data TEXT,
+        batch_id TEXT,
+        scored_at INTEGER NOT NULL
+    )`);
+
+    await runAsync(`CREATE TABLE IF NOT EXISTS property_analysis (
+        doc_id TEXT PRIMARY KEY,
+        analysis_markdown TEXT NOT NULL,
+        analyzed_at INTEGER NOT NULL
+    )`);
+
     initialized = true;
 }
 
@@ -308,6 +334,113 @@ export async function setCachedLuris(pnu: string, facilities: CachedLurisFacilit
         "INSERT OR REPLACE INTO luris_cache (pnu, facilities, last_updated) VALUES (?, ?, ?)",
         [pnu, JSON.stringify(facilities), Date.now()]
     );
+}
+
+// --- Property Scores ---
+
+export interface PropertyScore {
+    doc_id: string;
+    address: string;
+    dong: string;
+    pnu: string;
+    sido: string;
+    sigungu: string;
+    score: number;
+    signal_count: number;
+    signal_keywords: string | null;
+    facility_count: number;
+    has_unexecuted: number;
+    has_compensation: number;
+    signal_details: string | null;
+    facility_details: string | null;
+    auction_data: string | null;
+    batch_id: string;
+    scored_at: number;
+}
+
+export async function getPropertyScores(limit = 20, offset = 0): Promise<PropertyScore[]> {
+    await ensureInitialized();
+    return allAsync<PropertyScore>(
+        "SELECT * FROM property_scores ORDER BY score DESC LIMIT ? OFFSET ?",
+        [limit, offset]
+    );
+}
+
+export async function getPropertyScoreCount(): Promise<number> {
+    await ensureInitialized();
+    const row = await getAsync<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM property_scores"
+    );
+    return row?.cnt || 0;
+}
+
+export async function setPropertyScore(entry: Omit<PropertyScore, "scored_at">): Promise<void> {
+    await ensureInitialized();
+    await runAsync(
+        `INSERT OR REPLACE INTO property_scores
+         (doc_id, address, dong, pnu, sido, sigungu, score, signal_count,
+          signal_keywords, facility_count, has_unexecuted, has_compensation,
+          signal_details, facility_details, auction_data, batch_id, scored_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            entry.doc_id, entry.address, entry.dong, entry.pnu,
+            entry.sido, entry.sigungu, entry.score, entry.signal_count,
+            entry.signal_keywords, entry.facility_count,
+            entry.has_unexecuted, entry.has_compensation,
+            entry.signal_details, entry.facility_details,
+            entry.auction_data, entry.batch_id, Date.now(),
+        ]
+    );
+}
+
+export async function clearPropertyScores(): Promise<void> {
+    await ensureInitialized();
+    await runAsync("DELETE FROM property_scores");
+}
+
+// --- Property Analysis ---
+
+export interface PropertyAnalysis {
+    doc_id: string;
+    analysis_markdown: string;
+    analyzed_at: number;
+}
+
+export async function getPropertyAnalysis(docId: string): Promise<PropertyAnalysis | null> {
+    await ensureInitialized();
+    const row = await getAsync<PropertyAnalysis>(
+        "SELECT * FROM property_analysis WHERE doc_id = ?",
+        [docId]
+    );
+    return row || null;
+}
+
+export async function setPropertyAnalysis(docId: string, markdown: string): Promise<void> {
+    await ensureInitialized();
+    await runAsync(
+        "INSERT OR REPLACE INTO property_analysis (doc_id, analysis_markdown, analyzed_at) VALUES (?, ?, ?)",
+        [docId, markdown, Date.now()]
+    );
+}
+
+export async function getPropertyAnalysisBatch(docIds: string[]): Promise<Map<string, PropertyAnalysis>> {
+    await ensureInitialized();
+    const result = new Map<string, PropertyAnalysis>();
+    if (docIds.length === 0) return result;
+
+    const BATCH = 500;
+    for (let i = 0; i < docIds.length; i += BATCH) {
+        const batch = docIds.slice(i, i + BATCH);
+        const placeholders = batch.map(() => "?").join(",");
+        const rows = await allAsync<PropertyAnalysis>(
+            `SELECT * FROM property_analysis WHERE doc_id IN (${placeholders})`,
+            batch
+        );
+        for (const row of rows) {
+            result.set(row.doc_id, row);
+        }
+    }
+    return result;
 }
 
 // --- Cleanup ---
