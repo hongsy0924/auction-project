@@ -317,46 +317,69 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
 
                     {/* Progress steps */}
                     {analysisLoading && analysisSteps.length > 0 && (
-                        <div className={styles.progressSteps}>
-                            {analysisSteps.map((s) => (
-                                <div key={s.step} className={`${styles.progressStep} ${styles[`step_${s.status}`]}`}>
-                                    <div>
-                                        {s.status === "done" ? (
-                                            <Check size={14} />
-                                        ) : s.status === "active" ? (
-                                            <Loader size={14} className={styles.spinIcon} />
-                                        ) : (
-                                            <span className={styles.stepDot} />
-                                        )}
+                        <div className={styles.progressContainer}>
+                            <div className={styles.progressHeader}>
+                                <Sparkles size={16} style={{ color: "var(--primary)" }} />
+                                <span className={styles.progressTitle}>분석 진행 중</span>
+                            </div>
+                            <div className={styles.progressSteps}>
+                                {analysisSteps.map((s) => (
+                                    <div key={s.step} className={`${styles.progressStep} ${styles[`step_${s.status}`]}`}>
+                                        <div className={styles.stepIcon}>
+                                            {s.status === "done" ? (
+                                                <Check size={14} />
+                                            ) : s.status === "active" ? (
+                                                <Loader size={14} className={styles.spinIcon} />
+                                            ) : (
+                                                <span className={styles.stepDot} />
+                                            )}
+                                        </div>
+                                        <span className={styles.stepLabel}>{s.message}</span>
                                     </div>
-                                    <span>{s.message}</span>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     )}
 
                     {analysisError && (
-                        <div className={styles.errorText}>
-                            <AlertCircle size={14} />
-                            {analysisError}
+                        <div className={styles.errorCard}>
+                            <AlertCircle size={20} />
+                            <span>{analysisError}</span>
                         </div>
                     )}
 
                     {analysisResult && (
-                        <div
-                            className={styles.resultCard}
-                            dangerouslySetInnerHTML={{ __html: renderedResult }}
-                        />
+                        <section className={styles.resultContainer}>
+                            <div className={styles.resultHeader}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <Sparkles size={16} />
+                                    <span className={styles.resultLabel}>AI 분석 결과</span>
+                                </div>
+                            </div>
+                            <div
+                                className={styles.resultCard}
+                                dangerouslySetInnerHTML={{ __html: renderedResult }}
+                            />
+                        </section>
                     )}
 
-                    {!analysisResult && !analysisLoading && (
+                    {!analysisResult && (
                         <button
                             className={styles.analyzeButton}
                             onClick={handleDeepAnalysis}
-                            disabled={!signalData || signalLoading}
+                            disabled={!signalData || signalLoading || analysisLoading}
                         >
-                            <Sparkles size={16} />
-                            <span>이 물건의 공공사업 시그널 심층 분석</span>
+                            {analysisLoading ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <div className={styles.miniSpinner} />
+                                    <span>분석 중...</span>
+                                </div>
+                            ) : (
+                                <>
+                                    <Sparkles size={16} />
+                                    <span>이 물건의 공공사업 시그널 심층 분석</span>
+                                </>
+                            )}
                         </button>
                     )}
                 </div>

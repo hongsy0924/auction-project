@@ -67,6 +67,30 @@ function getDatabase(): sqlite3.Database {
     return db;
 }
 
+/**
+ * Fetch all auction items (no pagination).
+ * Used for batch pre-computation of signal scores.
+ */
+export function getAllAuctionItems(): Promise<Record<string, unknown>[]> {
+    return new Promise((resolve, reject) => {
+        let db: sqlite3.Database;
+        try {
+            db = getDatabase();
+        } catch (e) {
+            return reject(e);
+        }
+
+        db.all(
+            `SELECT * FROM "${TABLE_NAME}"`,
+            [],
+            (err, rows) => {
+                if (err) return reject(err);
+                resolve((rows || []) as Record<string, unknown>[]);
+            }
+        );
+    });
+}
+
 /** Result shape returned by `searchAuctions`. */
 export interface AuctionSearchResult {
     data: Record<string, unknown>[];
