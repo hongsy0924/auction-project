@@ -3,14 +3,18 @@ import { getAllAuctionItems } from "@/lib/db";
 import { resolveAddressToCouncils } from "@/lib/minutes/address-resolver";
 import {
     getRegionSignals,
+    setRegionSignals,
     setPropertyScore,
     clearPropertyScores,
     setPropertyAnalysis,
     getPropertyAnalysis,
     type RegionSignal,
 } from "@/lib/minutes/cache";
+import { ClikClient } from "@/lib/minutes/clik-client";
 import { getUrbanPlanFacilities, type UrbanPlanFacility } from "@/lib/luris/client";
 import { MinutesService } from "@/lib/minutes/workflow";
+
+const SIGNAL_KEYWORDS = ["보상", "편입", "수용", "개발", "착공", "도시계획", "도로", "택지"];
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +62,61 @@ function computeScore(signals: RegionSignal[], facilities: UrbanPlanFacility[]):
     return score;
 }
 
+// --- Fetch region signals (cache-first, then CLIK API) ---
+
+async function fetchRegionSignals(
+    clikClient: ClikClient,
+    councilCode: string,
+    dongName: string,
+): Promise<RegionSignal[]> {
+    // Check cache first
+    const cached = await getRegionSignals(councilCode, dongName).catch(() => [] as RegionSignal[]);
+    if (cached.length > 0) return cached;
+
+    // Cache miss → call CLIK API for each keyword
+    const entries: { council_code: string; dong_name: string; keyword: string; doc_ids: string[]; doc_count: number }[] = [];
+
+    for (const keyword of SIGNAL_KEYWORDS) {
+        const searchTerm = dongName ? `${dongName} ${keyword}` : keyword;
+        try {
+            const { totalCount, items } = await clikClient.searchMinutes({
+                keyword: searchTerm,
+                councilCode,
+                listCount: 10,
+            });
+            const docCount = Math.min(totalCount, items.length || totalCount);
+            if (docCount > 0) {
+                entries.push({
+                    council_code: councilCode,
+                    dong_name: dongName,
+                    keyword,
+                    doc_ids: items.map((item) => item.DOCID),
+                    doc_count: docCount,
+                });
+            }
+        } catch {
+            // CLIK API failure for this keyword is non-fatal
+        }
+        // Rate limit
+        await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    // Cache results
+    if (entries.length > 0) {
+        await setRegionSignals(entries).catch(() => { /* ignore cache write error */ });
+    }
+
+    return entries.map((e) => ({
+        council_code: e.council_code,
+        dong_name: e.dong_name,
+        keyword: e.keyword,
+        signal_summary: null,
+        doc_ids: JSON.stringify(e.doc_ids),
+        doc_count: e.doc_count,
+        last_updated: Date.now(),
+    }));
+}
+
 // --- Background processing ---
 
 interface ScoredItem {
@@ -76,6 +135,13 @@ interface ScoredItem {
 async function processAllItems(batchId: string) {
     console.log(`[Precompute] Starting batch ${batchId}`);
 
+    const clikApiKey = process.env.CLIK_API_KEY;
+    if (!clikApiKey) {
+        console.error("[Precompute] CLIK_API_KEY not set, cannot proceed");
+        return;
+    }
+    const clikClient = new ClikClient(clikApiKey);
+
     let allItems: Record<string, unknown>[];
     try {
         allItems = await getAllAuctionItems();
@@ -89,7 +155,10 @@ async function processAllItems(batchId: string) {
     await clearPropertyScores();
 
     // Phase A: Score all items
+    // Pre-fetch signals per unique (councilCode, dong) to avoid redundant API calls
+    const signalCache = new Map<string, RegionSignal[]>();
     const scored: ScoredItem[] = [];
+    let resolvedCount = 0;
 
     for (const item of allItems) {
         const address = String(item["주소"] || "");
@@ -100,14 +169,20 @@ async function processAllItems(batchId: string) {
         try {
             const location = resolveAddressToCouncils(address);
             if (!location || location.councilCodes.length === 0) continue;
+            resolvedCount++;
 
-            // Get signals from all mapped councils
-            const signalPromises = location.councilCodes.map((c) =>
-                getRegionSignals(c.code, location.dong).catch(() => [] as RegionSignal[])
-            );
-            const signalResults = (await Promise.all(signalPromises))
-                .flat()
-                .filter((s) => s.doc_count > 0);
+            // Get signals from all mapped councils (with in-memory dedup)
+            const allSignals: RegionSignal[] = [];
+            for (const c of location.councilCodes) {
+                const cacheKey = `${c.code}::${location.dong || ""}`;
+                let signals = signalCache.get(cacheKey);
+                if (!signals) {
+                    signals = await fetchRegionSignals(clikClient, c.code, location.dong || "");
+                    signalCache.set(cacheKey, signals);
+                }
+                allSignals.push(...signals);
+            }
+            const signalResults = allSignals.filter((s) => s.doc_count > 0);
 
             // Get LURIS facilities (cached with 30-day TTL)
             let facilities: UrbanPlanFacility[] = [];
@@ -192,16 +267,10 @@ async function processAllItems(batchId: string) {
         }
     }
 
-    console.log(`[Precompute] Phase A complete: ${scored.length} items scored`);
+    console.log(`[Precompute] Phase A complete: ${scored.length} items scored (${resolvedCount} resolved, ${signalCache.size} unique regions)`);
 
     // Phase B: Deep analysis (sorted by score, skip already analyzed)
     scored.sort((a, b) => b.score - a.score);
-
-    const clikApiKey = process.env.CLIK_API_KEY;
-    if (!clikApiKey) {
-        console.warn("[Precompute] CLIK_API_KEY not set, skipping deep analysis");
-        return;
-    }
 
     const service = new MinutesService(clikApiKey);
     let analyzed = 0;
