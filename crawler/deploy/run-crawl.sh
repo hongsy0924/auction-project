@@ -4,10 +4,13 @@
 # crontab에 의해 매일 오전 5시 KST에 실행됩니다.
 #
 # 순서:
-#   1. 크롤링 실행 (python -m src.main)
-#   2. SQLite 정리  (python sqlite_cleaning.py)
-#   3. DB 파일을 Fly.io 웹 앱으로 전송 (flyctl sftp)
-#   4. 시그널 사전 계산 트리거 (curl → Fly.io API)
+#   1. 최신 코드 pull
+#   2. 크롤링 실행 (python -m src.main)
+#   3. SQLite 정리  (python sqlite_cleaning.py)
+#   4. DB 파일을 Fly.io 웹 앱으로 전송 (flyctl sftp)
+#   4.5. 지역 시그널 인덱싱 (index_region_signals.py)
+#   4.6. minutes_cache.db를 Fly.io로 전송
+#   5. 시그널 사전 계산 트리거 (curl → Fly.io API)
 # =============================================================================
 set -euo pipefail
 
@@ -32,12 +35,12 @@ fi
 echo "$LOG_PREFIX === 크롤링 시작 ==="
 
 # --- 1. 최신 코드 pull ---
-echo "$LOG_PREFIX [1/5] Pulling latest code..."
+echo "$LOG_PREFIX [1/7] Pulling latest code..."
 cd "$APP_DIR"
 git pull origin main --ff-only 2>/dev/null || echo "$LOG_PREFIX Git pull skipped (not on main or conflicts)"
 
 # --- 2. 크롤링 실행 ---
-echo "$LOG_PREFIX [2/5] Running crawler..."
+echo "$LOG_PREFIX [2/7] Running crawler..."
 cd "$CRAWLER_DIR"
 source "$VENV"
 
@@ -51,12 +54,12 @@ python -m src.main
 echo "$LOG_PREFIX Crawling complete."
 
 # --- 3. SQLite 정리 ---
-echo "$LOG_PREFIX [3/5] Cleaning SQLite database..."
+echo "$LOG_PREFIX [3/7] Cleaning SQLite database..."
 python sqlite_cleaning.py "$OUTPUT_DB"
 echo "$LOG_PREFIX SQLite cleaning complete."
 
 # --- 4. Fly.io로 DB 전송 ---
-echo "$LOG_PREFIX [4/5] Transferring DB to Fly.io..."
+echo "$LOG_PREFIX [4/7] Transferring DB to Fly.io..."
 FLY_APP="applemango"
 
 if command -v flyctl &> /dev/null && [ -n "${FLY_API_TOKEN:-}" ]; then
@@ -81,8 +84,27 @@ else
     echo "$LOG_PREFIX DB saved locally at: $OUTPUT_DB"
 fi
 
+# --- 4.5 지역 시그널 인덱싱 ---
+echo "$LOG_PREFIX [5/7] Indexing region signals..."
+cd "$CRAWLER_DIR"
+export MINUTES_CACHE_PATH="$CRAWLER_DIR/output/minutes_cache.db"
+python scripts/index_region_signals.py "$OUTPUT_DB" || echo "$LOG_PREFIX Warning: region signal indexing failed"
+
+# --- 4.6 minutes_cache.db 전송 ---
+echo "$LOG_PREFIX [6/7] Transferring minutes_cache.db to Fly.io..."
+CACHE_DB="$CRAWLER_DIR/output/minutes_cache.db"
+if [ -f "$CACHE_DB" ] && command -v flyctl &> /dev/null && [ -n "${FLY_API_TOKEN:-}" ]; then
+    flyctl ssh console -a "$FLY_APP" -C "rm -f /data/minutes_cache.db" 2>/dev/null || true
+    flyctl ssh sftp shell -a "$FLY_APP" <<SFTP
+put $CACHE_DB /data/minutes_cache.db
+SFTP
+    echo "$LOG_PREFIX minutes_cache.db transfer complete."
+else
+    echo "$LOG_PREFIX Skipping minutes_cache.db transfer."
+fi
+
 # --- 5. 시그널 사전 계산 트리거 ---
-echo "$LOG_PREFIX [5/5] Triggering signal pre-computation..."
+echo "$LOG_PREFIX [7/7] Triggering signal pre-computation..."
 if [ -n "${PRECOMPUTE_SECRET:-}" ]; then
     sleep 10  # 앱이 새 DB를 인식할 시간
     curl -s -X POST "https://applemango.fly.dev/api/signal-top/precompute" \
