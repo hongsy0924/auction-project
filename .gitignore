@@ -27,3 +27,8 @@ crawler/chromedriver/
 # macOS duplicate files (Finder copy artifacts)
 *\ 2.*
 *\ 3.*
+
+# Claude Code skills
+.agents/
+.claude/skills/
+skills-lock.json
