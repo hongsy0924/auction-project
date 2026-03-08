@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import styles from "./MinutesSearchPage.module.css";
-import { ChevronLeft, Search, Sparkles, MessageSquare, AlertCircle, Check, Loader } from "lucide-react";
+import { ChevronLeft, Search, MessageSquare, AlertCircle, Check, Loader } from "lucide-react";
 
 /**
  * Lightweight markdown → HTML converter.
@@ -245,18 +245,7 @@ export default function MinutesSearchPage({ embedded = false }: { embedded?: boo
                         <ChevronLeft size={16} />
                         <span>목록으로</span>
                     </Link>
-                    <div className={styles.headerContent}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                            <Sparkles size={20} className="text-primary" style={{ color: "var(--primary)" }} />
-                            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                                AI Intelligence
-                            </span>
-                        </div>
-                        <h1 className={styles.title}>회의록 검색</h1>
-                        <p className={styles.subtitle}>
-                            지방의회 회의록에서 사업 진행 시그널을 스마트하게 찾아보세요
-                        </p>
-                    </div>
+                    <h1 className={styles.title}>회의록 검색</h1>
                 </div>
             )}
 
@@ -302,27 +291,16 @@ export default function MinutesSearchPage({ embedded = false }: { embedded?: boo
             </section>
 
             {loading && steps.length > 0 && (
-                <div className={styles.progressContainer}>
-                    <div className={styles.progressHeader}>
-                        <Sparkles size={16} style={{ color: "var(--primary)" }} />
-                        <span className={styles.progressTitle}>분석 진행 중</span>
-                    </div>
-                    <div className={styles.progressSteps}>
-                        {steps.map((s: ProgressStep) => (
-                            <div key={s.step} className={`${styles.progressStep} ${styles[`step_${s.status}`]}`}>
-                                <div className={styles.stepIcon}>
-                                    {s.status === "done" ? (
-                                        <Check size={14} />
-                                    ) : s.status === "active" ? (
-                                        <Loader size={14} className={styles.spinIcon} />
-                                    ) : (
-                                        <span className={styles.stepDot} />
-                                    )}
-                                </div>
-                                <span className={styles.stepLabel}>{s.message}</span>
-                            </div>
-                        ))}
-                    </div>
+                <div className={styles.progressInline}>
+                    {steps.map((s: ProgressStep, i: number) => (
+                        <React.Fragment key={s.step}>
+                            <span className={`${styles.progressChip} ${styles[`chip_${s.status}`]}`}>
+                                {s.status === "done" ? <Check size={12} /> : s.status === "active" ? <Loader size={12} className={styles.spinIcon} /> : null}
+                                <span>{s.message}</span>
+                            </span>
+                            {i < steps.length - 1 && <span className={styles.progressArrow}>→</span>}
+                        </React.Fragment>
+                    ))}
                 </div>
             )}
 
@@ -336,10 +314,7 @@ export default function MinutesSearchPage({ embedded = false }: { embedded?: boo
             {result && (
                 <section className={styles.resultContainer}>
                     <div className={styles.resultHeader}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <Sparkles size={16} />
-                            <span className={styles.resultLabel}>AI 분석 결과</span>
-                        </div>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-muted)" }}>분석 결과</span>
                     </div>
                     <div
                         className={styles.resultCard}
