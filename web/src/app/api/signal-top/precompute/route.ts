@@ -73,32 +73,32 @@ async function fetchRegionSignals(
     const cached = await getRegionSignals(councilCode, dongName).catch(() => [] as RegionSignal[]);
     if (cached.length > 0) return cached;
 
-    // Cache miss → call CLIK API for each keyword
+    // Cache miss → call CLIK API for all keywords in parallel
     const entries: { council_code: string; dong_name: string; keyword: string; doc_ids: string[]; doc_count: number }[] = [];
 
-    for (const keyword of SIGNAL_KEYWORDS) {
-        const searchTerm = dongName ? `${dongName} ${keyword}` : keyword;
-        try {
+    const results = await Promise.allSettled(
+        SIGNAL_KEYWORDS.map(async (keyword) => {
+            const searchTerm = dongName ? `${dongName} ${keyword}` : keyword;
             const { totalCount, items } = await clikClient.searchMinutes({
                 keyword: searchTerm,
                 councilCode,
                 listCount: 10,
             });
             const docCount = Math.min(totalCount, items.length || totalCount);
-            if (docCount > 0) {
-                entries.push({
-                    council_code: councilCode,
-                    dong_name: dongName,
-                    keyword,
-                    doc_ids: items.map((item) => item.DOCID),
-                    doc_count: docCount,
-                });
-            }
-        } catch {
-            // CLIK API failure for this keyword is non-fatal
+            return { keyword, docCount, items };
+        })
+    );
+
+    for (const result of results) {
+        if (result.status === "fulfilled" && result.value.docCount > 0) {
+            entries.push({
+                council_code: councilCode,
+                dong_name: dongName,
+                keyword: result.value.keyword,
+                doc_ids: result.value.items.map((item) => item.DOCID),
+                doc_count: result.value.docCount,
+            });
         }
-        // Rate limit
-        await new Promise((resolve) => setTimeout(resolve, 300));
     }
 
     // Cache results
@@ -152,7 +152,9 @@ async function processAllItems(batchId: string) {
     console.log(`[Precompute] Loaded ${allItems.length} auction items`);
 
     // Clear previous scores
+    console.log(`[Precompute] Clearing previous scores...`);
     await clearPropertyScores();
+    console.log(`[Precompute] Scores cleared. Starting Phase A...`);
 
     // Phase A: Score all items
     // Pre-fetch signals per unique (councilCode, dong) to avoid redundant API calls
@@ -168,8 +170,13 @@ async function processAllItems(batchId: string) {
         const docId = String(item["고유키"] || "");
         if (!address || !docId) continue;
 
-        // Progress log every 500 items
-        if (idx > 0 && idx % 500 === 0) {
+        // Log first few items for debugging
+        if (idx < 3) {
+            console.log(`[Precompute] Processing item ${idx}: address="${address.substring(0, 30)}..." pnu="${pnu}"`);
+        }
+
+        // Progress log every 100 items
+        if (idx > 0 && idx % 100 === 0) {
             console.log(`[Precompute] Progress: ${idx}/${allItems.length} (resolved=${resolvedCount}, dong=${dongCount}, scored=${scored.length}, regions=${signalCache.size})`);
         }
 
@@ -185,8 +192,10 @@ async function processAllItems(batchId: string) {
             const cacheKey = `${primaryCouncil.code}::${location.dong || ""}`;
             let signals = signalCache.get(cacheKey);
             if (!signals) {
+                if (idx < 3) console.log(`[Precompute] Fetching signals for ${cacheKey}...`);
                 signals = await fetchRegionSignals(clikClient, primaryCouncil.code, location.dong || "");
                 signalCache.set(cacheKey, signals);
+                if (idx < 3) console.log(`[Precompute] Got ${signals.length} signal entries for ${cacheKey}`);
             }
             const signalResults = signals.filter((s) => s.doc_count > 0);
 
@@ -194,7 +203,9 @@ async function processAllItems(batchId: string) {
             let facilities: UrbanPlanFacility[] = [];
             if (pnu) {
                 try {
+                    if (idx < 3) console.log(`[Precompute] Fetching LURIS for PNU ${pnu}...`);
                     facilities = await getUrbanPlanFacilities(pnu);
+                    if (idx < 3) console.log(`[Precompute] Got ${facilities.length} facilities`);
                 } catch { /* LURIS API failure is non-fatal */ }
             }
 
@@ -247,6 +258,7 @@ async function processAllItems(batchId: string) {
                         keyword: s.keyword,
                         doc_count: s.doc_count,
                         signal_summary: s.signal_summary,
+                        council_code: s.council_code,
                     }))
                 ),
                 facility_details: JSON.stringify(
@@ -275,14 +287,20 @@ async function processAllItems(batchId: string) {
 
     console.log(`[Precompute] Phase A complete: ${scored.length} items scored (${resolvedCount} resolved, ${signalCache.size} unique regions)`);
 
-    // Phase B: Deep analysis (sorted by score, skip already analyzed)
+    // Phase B: Deep analysis (top scored only, with threshold + cap)
     scored.sort((a, b) => b.score - a.score);
+
+    const ANALYSIS_THRESHOLD = 50;
+    const MAX_ANALYSES = 20;
+    const toAnalyze = scored.filter(s => s.score >= ANALYSIS_THRESHOLD).slice(0, MAX_ANALYSES);
+
+    console.log(`[Precompute] Phase B: ${toAnalyze.length} items above threshold ${ANALYSIS_THRESHOLD} (max ${MAX_ANALYSES})`);
 
     const service = new MinutesService(clikApiKey);
     let analyzed = 0;
 
-    for (let i = 0; i < scored.length; i++) {
-        const { docId, address, dong, pnu, councilCodes, facilities } = scored[i];
+    for (let i = 0; i < toAnalyze.length; i++) {
+        const { docId, address, dong, pnu, councilCodes, facilities } = toAnalyze[i];
 
         // Skip if already analyzed
         const existing = await getPropertyAnalysis(docId);
@@ -292,7 +310,7 @@ async function processAllItems(batchId: string) {
         }
 
         try {
-            console.log(`[Precompute] Analyzing ${analyzed + 1}: ${address} (score=${scored[i].score})`);
+            console.log(`[Precompute] Analyzing ${analyzed + 1}: ${address} (score=${toAnalyze[i].score})`);
             const markdown = await service.processPropertyAnalysis(
                 address, dong, pnu, councilCodes, facilities
             );
@@ -304,7 +322,7 @@ async function processAllItems(batchId: string) {
         }
 
         // Rate limiting between analyses
-        if (i < scored.length - 1) {
+        if (i < toAnalyze.length - 1) {
             await new Promise((resolve) => setTimeout(resolve, 2000));
         }
     }

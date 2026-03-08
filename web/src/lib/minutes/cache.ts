@@ -393,6 +393,15 @@ export async function setPropertyScore(entry: Omit<PropertyScore, "scored_at">):
     );
 }
 
+export async function getPropertyScoreById(docId: string): Promise<PropertyScore | null> {
+    await ensureInitialized();
+    const row = await getAsync<PropertyScore>(
+        "SELECT * FROM property_scores WHERE doc_id = ?",
+        [docId]
+    );
+    return row || null;
+}
+
 export async function clearPropertyScores(): Promise<void> {
     await ensureInitialized();
     await runAsync("DELETE FROM property_scores");
