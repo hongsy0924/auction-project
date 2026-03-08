@@ -31,9 +31,8 @@ export default function ProtectedLayout({
   return (
     <div>
       <header className={styles.header}>
-        <h2 className={styles.headerTitle}>관리시스템</h2>
         <div className={styles.headerRight}>
-          <span className={styles.username}>{user.username}님</span>
+          <span className={styles.username}>{user.username}</span>
           <button onClick={logout} className={styles.logoutButton}>
             로그아웃
           </button>
