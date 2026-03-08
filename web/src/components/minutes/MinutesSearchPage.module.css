@@ -44,27 +44,14 @@
     color: var(--primary);
     background: var(--bg-hover);
     border-color: var(--primary-soft);
-    transform: translateX(-2px);
-}
-
-.headerContent {
-    border-left: 4px solid var(--primary);
-    padding-left: 20px;
 }
 
 .title {
-    font-size: 32px;
+    font-size: 22px;
     font-weight: 800;
     color: var(--text-main);
     letter-spacing: -0.5px;
     margin: 0;
-}
-
-.subtitle {
-    font-size: 15px;
-    color: var(--text-muted);
-    margin-top: 8px;
-    max-width: 600px;
 }
 
 /* Search Section */
@@ -93,7 +80,7 @@
 
 .textarea {
     width: 100%;
-    min-height: 120px;
+    min-height: 56px;
     padding: 18px 18px 18px 48px;
     border: 1.5px solid var(--border-color);
     border-radius: var(--radius-md);
@@ -143,7 +130,6 @@
 
 .searchButton:hover:not(:disabled) {
     background: var(--primary-hover);
-    transform: translateY(-2px);
     box-shadow: var(--shadow-md);
 }
 
@@ -212,89 +198,34 @@
 }
 
 /* Progress Steps */
-.progressContainer {
+.progressInline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    margin-bottom: 24px;
-    animation: fadeIn 0.3s ease-out;
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
 }
 
-.progressHeader {
-    display: flex;
+.progressChip {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 20px;
+    gap: 4px;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
 }
 
-.progressTitle {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-main);
-}
+.chip_pending { color: var(--text-light); }
+.chip_active { color: var(--primary); font-weight: 600; }
+.chip_done { color: #059669; }
 
-.progressSteps {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.progressStep {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 14px;
-    transition: all 0.3s ease;
-}
-
-.stepIcon {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all 0.3s ease;
-}
-
-.step_pending .stepIcon {
-    background: var(--bg-hover);
-    color: var(--text-muted);
-}
-
-.step_active .stepIcon {
-    background: var(--primary-soft);
-    color: var(--primary);
-}
-
-.step_done .stepIcon {
-    background: #c6f6d5;
-    color: #22543d;
-}
-
-.stepDot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    opacity: 0.4;
-}
-
-.stepLabel {
-    font-weight: 500;
-    color: var(--text-muted);
-    transition: color 0.3s ease;
-}
-
-.step_active .stepLabel {
-    color: var(--text-main);
-    font-weight: 600;
-}
-
-.step_done .stepLabel {
-    color: #22543d;
+.progressArrow {
+    color: var(--text-light);
+    font-size: 11px;
 }
 
 .spinIcon {
@@ -326,19 +257,11 @@
     padding: 0 4px;
 }
 
-.resultLabel {
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--primary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
 .resultCard {
     background: #fff;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    padding: 40px;
+    padding: 24px;
     box-shadow: var(--shadow-lg);
     line-height: 1.8;
     font-size: 15.5px;
