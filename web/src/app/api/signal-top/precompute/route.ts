@@ -159,30 +159,36 @@ async function processAllItems(batchId: string) {
     const signalCache = new Map<string, RegionSignal[]>();
     const scored: ScoredItem[] = [];
     let resolvedCount = 0;
+    let dongCount = 0;
 
-    for (const item of allItems) {
+    for (let idx = 0; idx < allItems.length; idx++) {
+        const item = allItems[idx];
         const address = String(item["주소"] || "");
         const pnu = String(item["PNU"] || "");
         const docId = String(item["고유키"] || "");
         if (!address || !docId) continue;
 
+        // Progress log every 500 items
+        if (idx > 0 && idx % 500 === 0) {
+            console.log(`[Precompute] Progress: ${idx}/${allItems.length} (resolved=${resolvedCount}, dong=${dongCount}, scored=${scored.length}, regions=${signalCache.size})`);
+        }
+
         try {
             const location = resolveAddressToCouncils(address);
             if (!location || location.councilCodes.length === 0) continue;
             resolvedCount++;
+            if (location.dong) dongCount++;
 
-            // Get signals from all mapped councils (with in-memory dedup)
-            const allSignals: RegionSignal[] = [];
-            for (const c of location.councilCodes) {
-                const cacheKey = `${c.code}::${location.dong || ""}`;
-                let signals = signalCache.get(cacheKey);
-                if (!signals) {
-                    signals = await fetchRegionSignals(clikClient, c.code, location.dong || "");
-                    signalCache.set(cacheKey, signals);
-                }
-                allSignals.push(...signals);
+            // Use only the most specific council (first = 시군구, skip 도/시 level)
+            // This prevents score inflation from generic parent-level signals
+            const primaryCouncil = location.councilCodes[0];
+            const cacheKey = `${primaryCouncil.code}::${location.dong || ""}`;
+            let signals = signalCache.get(cacheKey);
+            if (!signals) {
+                signals = await fetchRegionSignals(clikClient, primaryCouncil.code, location.dong || "");
+                signalCache.set(cacheKey, signals);
             }
-            const signalResults = allSignals.filter((s) => s.doc_count > 0);
+            const signalResults = signals.filter((s) => s.doc_count > 0);
 
             // Get LURIS facilities (cached with 30-day TTL)
             let facilities: UrbanPlanFacility[] = [];
@@ -209,7 +215,7 @@ async function processAllItems(batchId: string) {
                 sido: location.sido,
                 sigungu: location.sigungu,
                 score,
-                councilCodes: location.councilCodes.map((c) => c.code),
+                councilCodes: [primaryCouncil.code],
                 facilities,
                 auctionData: {
                     사건번호: item["사건번호"],
