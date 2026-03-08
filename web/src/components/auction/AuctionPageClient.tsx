@@ -13,7 +13,6 @@ import AuctionTable from "./AuctionTable";
 import Pagination from "./Pagination";
 import SignalTopTab from "./SignalTopTab";
 import MinutesSearchPage from "../minutes/MinutesSearchPage";
-import { LayoutGrid, TrendingUp, MessageSquare } from "lucide-react";
 
 type TabId = "auction-list" | "signal-top" | "minutes";
 
@@ -82,7 +81,7 @@ export default function AuctionPageClient() {
 
     return (
         <div style={{
-            padding: "32px 24px",
+            padding: "16px 24px",
             maxWidth: "1440px",
             margin: "0 auto",
             minHeight: "100vh",
@@ -90,39 +89,12 @@ export default function AuctionPageClient() {
             flexDirection: "column",
             gap: "24px"
         }}>
-            <header style={{ paddingBottom: "0", borderBottom: "none" }}>
-                <div style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-end",
-                    marginBottom: "16px",
-                }}>
-                    <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                            <LayoutGrid size={20} style={{ color: "var(--primary)" }} />
-                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                                Dashboard
-                            </span>
-                        </div>
-                        <h1 style={{ margin: 0, fontSize: "28px", fontWeight: 800, color: "var(--text-main)", letterSpacing: "-0.5px" }}>
-                            경매물건 목록
-                            {activeTab === "auction-list" && (
-                                <span style={{ fontSize: "16px", fontWeight: 500, color: "var(--text-muted)", marginLeft: "12px" }}>
-                                    총 {total.toLocaleString()}건
-                                </span>
-                            )}
-                        </h1>
-                    </div>
-                </div>
-                <nav style={{
-                    display: "flex",
-                    gap: "0",
-                    borderBottom: "1px solid var(--border-color)",
-                }}>
+            <header style={{ borderBottom: "1px solid var(--border-color)" }}>
+                <nav style={{ display: "flex", gap: "0", alignItems: "stretch" }}>
                     {([
-                        { id: "auction-list" as TabId, label: "경매 목록", icon: <LayoutGrid size={15} /> },
-                        { id: "signal-top" as TabId, label: "투자 시그널", icon: <TrendingUp size={15} /> },
-                        { id: "minutes" as TabId, label: "회의록 검색", icon: <MessageSquare size={15} /> },
+                        { id: "auction-list" as TabId, label: "경매 목록", count: activeTab === "auction-list" ? total : undefined },
+                        { id: "signal-top" as TabId, label: "투자 시그널" },
+                        { id: "minutes" as TabId, label: "회의록 검색" },
                     ]).map((tab) => (
                         <button
                             key={tab.id}
@@ -131,20 +103,24 @@ export default function AuctionPageClient() {
                                 display: "flex",
                                 alignItems: "center",
                                 gap: "6px",
-                                padding: "10px 20px",
+                                padding: "12px 20px",
                                 fontSize: "14px",
                                 fontWeight: activeTab === tab.id ? 700 : 500,
-                                color: activeTab === tab.id ? "var(--primary)" : "var(--text-muted)",
+                                color: activeTab === tab.id ? "var(--text-main)" : "var(--text-muted)",
                                 background: "none",
                                 border: "none",
                                 borderBottom: activeTab === tab.id ? "2px solid var(--primary)" : "2px solid transparent",
                                 cursor: "pointer",
-                                transition: "var(--transition-base)",
+                                transition: "var(--transition-fast)",
                                 marginBottom: "-1px",
                             }}
                         >
-                            {tab.icon}
                             {tab.label}
+                            {tab.count !== undefined && (
+                                <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)" }}>
+                                    {tab.count.toLocaleString()}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </nav>
