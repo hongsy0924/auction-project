@@ -3,8 +3,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import styles from "./SignalTopTab.module.css";
 import {
-    TrendingUp, MapPin, FileText, ChevronDown, ChevronUp,
-    Sparkles, AlertTriangle, Building2, Loader, Search,
+    FileText, ChevronDown, ChevronUp,
+    AlertTriangle, Building2, Loader, Search,
 } from "lucide-react";
 import Pagination from "./Pagination";
 
@@ -95,6 +95,12 @@ function getScoreColor(score: number): string {
     return "#059669";
 }
 
+function formatPrice(n: number): string {
+    if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(n % 100_000_000 === 0 ? 0 : 1)}억`;
+    if (n >= 10_000) return `${(n / 10_000).toFixed(0)}만`;
+    return n.toLocaleString();
+}
+
 export default function SignalTopTab() {
     const [items, setItems] = useState<SignalTopItem[]>([]);
     const [total, setTotal] = useState(0);
@@ -165,10 +171,8 @@ export default function SignalTopTab() {
 
     return (
         <div className={styles.container}>
-            <div className={styles.header}>
-                <TrendingUp size={18} style={{ color: "var(--primary)" }} />
-                <span className={styles.headerTitle}>투자 시그널 TOP</span>
-                <span className={styles.headerCount}>{total}건</span>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                {total}건
             </div>
 
             <div className={styles.cardList}>
@@ -196,7 +200,6 @@ export default function SignalTopTab() {
 
                                 <div className={styles.cardInfo}>
                                     <div className={styles.cardAddress}>
-                                        <MapPin size={14} />
                                         <span>{item.address}</span>
                                     </div>
                                     <div className={styles.cardMeta}>
@@ -207,11 +210,11 @@ export default function SignalTopTab() {
                                     {(auc["감정평가액"] || auc["최저매각가격"]) && (
                                         <div className={styles.cardPrice}>
                                             {auc["감정평가액"] && (
-                                                <span>감정가 {Number(auc["감정평가액"]).toLocaleString()}원</span>
+                                                <span>{formatPrice(Number(auc["감정평가액"]))}</span>
                                             )}
                                             {auc["최저매각가격"] && (
                                                 <span className={styles.priceArrow}>
-                                                    최저가 {Number(auc["최저매각가격"]).toLocaleString()}원
+                                                    → {formatPrice(Number(auc["최저매각가격"]))}
                                                 </span>
                                             )}
                                             {auc["%"] && (
@@ -299,8 +302,7 @@ export default function SignalTopTab() {
                                     ) : analysis ? (
                                         <div className={styles.analysisWrapper}>
                                             <div className={styles.analysisHeader}>
-                                                <Sparkles size={14} />
-                                                <span className={styles.analysisLabel}>AI 분석 결과</span>
+                                                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-muted)" }}>분석 결과</span>
                                             </div>
                                             <div
                                                 className={styles.analysisContent}
