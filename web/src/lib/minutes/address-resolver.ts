@@ -82,6 +82,22 @@ export function resolveAddressToCouncils(address: string): ResolvedLocation | nu
         }
     }
 
+    // 3b. 도로명주소 괄호 안에서 동/읍/면 추출
+    // 예: "서울특별시 동작구 매봉로4가길 45 (상도동,제이-레지던스)" → "상도동"
+    if (!dong) {
+        const parenMatch = cleaned.match(/\(([^)]+)\)/);
+        if (parenMatch) {
+            const inside = parenMatch[1].split(/[,\s]+/);
+            for (const token of inside) {
+                const t = token.trim();
+                if (t.endsWith("동") || t.endsWith("면") || t.endsWith("읍") || t.endsWith("리")) {
+                    dong = t;
+                    break;
+                }
+            }
+        }
+    }
+
     // 4. 의회코드 매핑
     const councilCodes: { name: string; code: string }[] = [];
 
