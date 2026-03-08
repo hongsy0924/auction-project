@@ -3,14 +3,8 @@
     background-color: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-}
-
-.headerTitle {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 700;
 }
 
 .headerRight {
