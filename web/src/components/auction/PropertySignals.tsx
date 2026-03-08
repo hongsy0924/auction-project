@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import styles from "./PropertySignals.module.css";
 import { AuctionItem } from "@/types/auction";
-import { MapPin, Building2, Search, Sparkles, Check, Loader, AlertCircle } from "lucide-react";
+import { Sparkles, Check, Loader, AlertCircle } from "lucide-react";
 
 /** Reusable lightweight markdown → HTML (same as MinutesSearchPage) */
 function renderMarkdown(md: string): string {
@@ -223,7 +223,6 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
         <div className={styles.container}>
             {/* Header */}
             <div className={styles.header}>
-                <MapPin size={16} style={{ color: "var(--primary)" }} />
                 <span className={styles.address}>{address}</span>
                 {pnu && <span className={styles.pnu}>PNU: {pnu}</span>}
             </div>
@@ -231,10 +230,7 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
             <div className={styles.sections}>
                 {/* Layer 1: 관할 의회 */}
                 <div className={styles.section}>
-                    <div className={styles.sectionLabel}>
-                        <Building2 size={14} />
-                        <span>관할 의회</span>
-                    </div>
+                    <div className={styles.sectionLabel}>관할 의회</div>
                     {signalLoading ? (
                         <span className={styles.loadingDots}>조회 중...</span>
                     ) : signalError ? (
@@ -258,10 +254,7 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
                 {/* Layer 2: 지역 시그널 */}
                 {signalData && signalData.signals.length > 0 && (
                     <div className={styles.section}>
-                        <div className={styles.sectionLabel}>
-                            <Search size={14} />
-                            <span>지역 시그널</span>
-                        </div>
+                        <div className={styles.sectionLabel}>지역 시그널</div>
                         {signalData.signals.map((s, i) => (
                             <div key={i} className={styles.signalItem}>
                                 <span className={styles.signalDot} />
@@ -279,10 +272,7 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
                 {/* Layer 3: 토지이용규제 */}
                 {signalData && signalData.urbanPlanFacilities.length > 0 && (
                     <div className={styles.section}>
-                        <div className={styles.sectionLabel}>
-                            <Building2 size={14} />
-                            <span>토지이용규제</span>
-                        </div>
+                        <div className={styles.sectionLabel}>토지이용규제</div>
                         {signalData.urbanPlanFacilities.map((f, i) => (
                             <div key={i} className={styles.facilityItem}>
                                 <div>
@@ -310,34 +300,20 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
 
                 {/* Layer 4: AI 심층 분석 */}
                 <div className={styles.section}>
-                    <div className={styles.sectionLabel}>
-                        <Sparkles size={14} />
-                        <span>AI 심층 분석</span>
-                    </div>
+                    <div className={styles.sectionLabel}>AI 심층 분석</div>
 
                     {/* Progress steps */}
                     {analysisLoading && analysisSteps.length > 0 && (
-                        <div className={styles.progressContainer}>
-                            <div className={styles.progressHeader}>
-                                <Sparkles size={16} style={{ color: "var(--primary)" }} />
-                                <span className={styles.progressTitle}>분석 진행 중</span>
-                            </div>
-                            <div className={styles.progressSteps}>
-                                {analysisSteps.map((s) => (
-                                    <div key={s.step} className={`${styles.progressStep} ${styles[`step_${s.status}`]}`}>
-                                        <div className={styles.stepIcon}>
-                                            {s.status === "done" ? (
-                                                <Check size={14} />
-                                            ) : s.status === "active" ? (
-                                                <Loader size={14} className={styles.spinIcon} />
-                                            ) : (
-                                                <span className={styles.stepDot} />
-                                            )}
-                                        </div>
-                                        <span className={styles.stepLabel}>{s.message}</span>
-                                    </div>
-                                ))}
-                            </div>
+                        <div className={styles.progressInline}>
+                            {analysisSteps.map((s, i) => (
+                                <React.Fragment key={s.step}>
+                                    <span className={`${styles.progressChip} ${styles[`chip_${s.status}`]}`}>
+                                        {s.status === "done" ? <Check size={12} /> : s.status === "active" ? <Loader size={12} className={styles.spinIcon} /> : null}
+                                        <span>{s.message}</span>
+                                    </span>
+                                    {i < analysisSteps.length - 1 && <span className={styles.progressArrow}>&rarr;</span>}
+                                </React.Fragment>
+                            ))}
                         </div>
                     )}
 
@@ -351,10 +327,7 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
                     {analysisResult && (
                         <section className={styles.resultContainer}>
                             <div className={styles.resultHeader}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <Sparkles size={16} />
-                                    <span className={styles.resultLabel}>AI 분석 결과</span>
-                                </div>
+                                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-muted)" }}>분석 결과</span>
                             </div>
                             <div
                                 className={styles.resultCard}
@@ -377,7 +350,7 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
                             ) : (
                                 <>
                                     <Sparkles size={16} />
-                                    <span>이 물건의 공공사업 시그널 심층 분석</span>
+                                    <span>심층 분석</span>
                                 </>
                             )}
                         </button>
