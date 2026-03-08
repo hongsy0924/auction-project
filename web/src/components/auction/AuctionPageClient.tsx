@@ -11,8 +11,10 @@ import {
 import AuctionSearch from "./AuctionSearch";
 import AuctionTable from "./AuctionTable";
 import Pagination from "./Pagination";
-import SignalTopTab from "./SignalTopTab";
-import MinutesSearchPage from "../minutes/MinutesSearchPage";
+import dynamic from "next/dynamic";
+
+const SignalTopTab = dynamic(() => import("./SignalTopTab"), { ssr: false });
+const MinutesSearchPage = dynamic(() => import("../minutes/MinutesSearchPage"), { ssr: false });
 
 type TabId = "auction-list" | "signal-top" | "minutes";
 
