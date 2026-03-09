@@ -16,6 +16,8 @@ const DETAIL_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days (historical data rarely ch
 const EMBEDDING_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SIGNAL_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const LURIS_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
+const EUM_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+const EUM_RESTRICTION_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 let db: sqlite3.Database | null = null;
 let initialized = false;
@@ -97,6 +99,24 @@ async function ensureInitialized(): Promise<void> {
         last_updated INTEGER NOT NULL
     )`);
 
+    await runAsync(`CREATE TABLE IF NOT EXISTS eum_notices (
+        area_cd TEXT PRIMARY KEY,
+        notices TEXT NOT NULL,
+        last_updated INTEGER NOT NULL
+    )`);
+
+    await runAsync(`CREATE TABLE IF NOT EXISTS eum_permits (
+        area_cd TEXT PRIMARY KEY,
+        permits TEXT NOT NULL,
+        last_updated INTEGER NOT NULL
+    )`);
+
+    await runAsync(`CREATE TABLE IF NOT EXISTS eum_restrictions (
+        area_cd TEXT PRIMARY KEY,
+        restrictions TEXT NOT NULL,
+        last_updated INTEGER NOT NULL
+    )`);
+
     await runAsync(`CREATE TABLE IF NOT EXISTS property_scores (
         doc_id TEXT PRIMARY KEY,
         address TEXT NOT NULL,
@@ -112,6 +132,13 @@ async function ensureInitialized(): Promise<void> {
         has_compensation INTEGER DEFAULT 0,
         signal_details TEXT,
         facility_details TEXT,
+        notice_count INTEGER DEFAULT 0,
+        permit_count INTEGER DEFAULT 0,
+        restriction_count INTEGER DEFAULT 0,
+        has_pnu_match INTEGER DEFAULT 0,
+        notice_details TEXT,
+        permit_details TEXT,
+        restriction_details TEXT,
         auction_data TEXT,
         batch_id TEXT,
         scored_at INTEGER NOT NULL
@@ -336,6 +363,98 @@ export async function setCachedLuris(pnu: string, facilities: CachedLurisFacilit
     );
 }
 
+// --- EUM Cache (토지이음) ---
+
+export interface CachedEumNotice {
+    title: string;
+    noticeType: string;
+    noticeDate: string;
+    areaCd: string;
+    relatedPnu?: string;
+    relatedAddress?: string;
+}
+
+export interface CachedEumPermit {
+    projectName: string;
+    permitType: string;
+    permitDate: string;
+    areaCd: string;
+    area?: string;
+}
+
+export interface CachedEumRestriction {
+    zoneName: string;
+    restrictionType: string;
+    description: string;
+    areaCd: string;
+}
+
+export async function getCachedEumNotices(areaCd: string): Promise<CachedEumNotice[] | null> {
+    await ensureInitialized();
+    const row = await getAsync<{ notices: string; last_updated: number }>(
+        "SELECT notices, last_updated FROM eum_notices WHERE area_cd = ?",
+        [areaCd]
+    );
+    if (!row) return null;
+    if (Date.now() - row.last_updated > EUM_TTL) {
+        await runAsync("DELETE FROM eum_notices WHERE area_cd = ?", [areaCd]);
+        return null;
+    }
+    return JSON.parse(row.notices);
+}
+
+export async function setCachedEumNotices(areaCd: string, notices: CachedEumNotice[]): Promise<void> {
+    await ensureInitialized();
+    await runAsync(
+        "INSERT OR REPLACE INTO eum_notices (area_cd, notices, last_updated) VALUES (?, ?, ?)",
+        [areaCd, JSON.stringify(notices), Date.now()]
+    );
+}
+
+export async function getCachedEumPermits(areaCd: string): Promise<CachedEumPermit[] | null> {
+    await ensureInitialized();
+    const row = await getAsync<{ permits: string; last_updated: number }>(
+        "SELECT permits, last_updated FROM eum_permits WHERE area_cd = ?",
+        [areaCd]
+    );
+    if (!row) return null;
+    if (Date.now() - row.last_updated > EUM_TTL) {
+        await runAsync("DELETE FROM eum_permits WHERE area_cd = ?", [areaCd]);
+        return null;
+    }
+    return JSON.parse(row.permits);
+}
+
+export async function setCachedEumPermits(areaCd: string, permits: CachedEumPermit[]): Promise<void> {
+    await ensureInitialized();
+    await runAsync(
+        "INSERT OR REPLACE INTO eum_permits (area_cd, permits, last_updated) VALUES (?, ?, ?)",
+        [areaCd, JSON.stringify(permits), Date.now()]
+    );
+}
+
+export async function getCachedEumRestrictions(areaCd: string): Promise<CachedEumRestriction[] | null> {
+    await ensureInitialized();
+    const row = await getAsync<{ restrictions: string; last_updated: number }>(
+        "SELECT restrictions, last_updated FROM eum_restrictions WHERE area_cd = ?",
+        [areaCd]
+    );
+    if (!row) return null;
+    if (Date.now() - row.last_updated > EUM_RESTRICTION_TTL) {
+        await runAsync("DELETE FROM eum_restrictions WHERE area_cd = ?", [areaCd]);
+        return null;
+    }
+    return JSON.parse(row.restrictions);
+}
+
+export async function setCachedEumRestrictions(areaCd: string, restrictions: CachedEumRestriction[]): Promise<void> {
+    await ensureInitialized();
+    await runAsync(
+        "INSERT OR REPLACE INTO eum_restrictions (area_cd, restrictions, last_updated) VALUES (?, ?, ?)",
+        [areaCd, JSON.stringify(restrictions), Date.now()]
+    );
+}
+
 // --- Property Scores ---
 
 export interface PropertyScore {
@@ -353,6 +472,13 @@ export interface PropertyScore {
     has_compensation: number;
     signal_details: string | null;
     facility_details: string | null;
+    notice_count: number;
+    permit_count: number;
+    restriction_count: number;
+    has_pnu_match: number;
+    notice_details: string | null;
+    permit_details: string | null;
+    restriction_details: string | null;
     auction_data: string | null;
     batch_id: string;
     scored_at: number;
@@ -380,14 +506,20 @@ export async function setPropertyScore(entry: Omit<PropertyScore, "scored_at">):
         `INSERT OR REPLACE INTO property_scores
          (doc_id, address, dong, pnu, sido, sigungu, score, signal_count,
           signal_keywords, facility_count, has_unexecuted, has_compensation,
-          signal_details, facility_details, auction_data, batch_id, scored_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          signal_details, facility_details,
+          notice_count, permit_count, restriction_count, has_pnu_match,
+          notice_details, permit_details, restriction_details,
+          auction_data, batch_id, scored_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             entry.doc_id, entry.address, entry.dong, entry.pnu,
             entry.sido, entry.sigungu, entry.score, entry.signal_count,
             entry.signal_keywords, entry.facility_count,
             entry.has_unexecuted, entry.has_compensation,
             entry.signal_details, entry.facility_details,
+            entry.notice_count, entry.permit_count, entry.restriction_count,
+            entry.has_pnu_match,
+            entry.notice_details, entry.permit_details, entry.restriction_details,
             entry.auction_data, entry.batch_id, Date.now(),
         ]
     );
@@ -462,4 +594,7 @@ export async function cleanExpiredCache(): Promise<void> {
     await runAsync("DELETE FROM embedding_cache WHERE ? - created_at > ?", [now, EMBEDDING_TTL]);
     await runAsync("DELETE FROM region_signals WHERE ? - last_updated > ?", [now, SIGNAL_TTL]);
     await runAsync("DELETE FROM luris_cache WHERE ? - last_updated > ?", [now, LURIS_TTL]);
+    await runAsync("DELETE FROM eum_notices WHERE ? - last_updated > ?", [now, EUM_TTL]);
+    await runAsync("DELETE FROM eum_permits WHERE ? - last_updated > ?", [now, EUM_TTL]);
+    await runAsync("DELETE FROM eum_restrictions WHERE ? - last_updated > ?", [now, EUM_RESTRICTION_TTL]);
 }

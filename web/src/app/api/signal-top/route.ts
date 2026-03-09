@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
             signal_keywords: item.signal_keywords ? JSON.parse(item.signal_keywords) : [],
             signal_details: item.signal_details ? JSON.parse(item.signal_details) : [],
             facility_details: item.facility_details ? JSON.parse(item.facility_details) : [],
+            notice_details: item.notice_details ? JSON.parse(item.notice_details) : [],
+            permit_details: item.permit_details ? JSON.parse(item.permit_details) : [],
+            restriction_details: item.restriction_details ? JSON.parse(item.restriction_details) : [],
             auction_data: item.auction_data ? JSON.parse(item.auction_data) : {},
             has_analysis: analysisMap.has(item.doc_id),
         }));

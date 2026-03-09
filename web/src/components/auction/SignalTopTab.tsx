@@ -21,6 +21,19 @@ interface FacilityDetail {
     executionStatus?: string;
 }
 
+interface NoticeDetail {
+    title: string;
+    noticeType: string;
+    noticeDate: string;
+}
+
+interface PermitDetail {
+    projectName: string;
+    permitType: string;
+    permitDate: string;
+    area?: string;
+}
+
 interface SignalTopItem {
     doc_id: string;
     address: string;
@@ -34,8 +47,13 @@ interface SignalTopItem {
     facility_count: number;
     has_unexecuted: number;
     has_compensation: number;
+    notice_count: number;
+    permit_count: number;
+    has_pnu_match: number;
     signal_details: SignalDetail[];
     facility_details: FacilityDetail[];
+    notice_details: NoticeDetail[];
+    permit_details: PermitDetail[];
     auction_data: Record<string, string | number | undefined>;
     has_analysis: boolean;
 }
@@ -150,8 +168,8 @@ export default function SignalTopTab() {
                         <div key={item.doc_id} className={styles.card}>
                             <div
                                 className={styles.cardHeader}
-                                onClick={() => item.has_analysis ? handleExpand(item.doc_id) : undefined}
-                                style={{ cursor: item.has_analysis ? "pointer" : "default" }}
+                                onClick={() => handleExpand(item.doc_id)}
+                                style={{ cursor: "pointer" }}
                             >
                                 <div className={styles.rankBadge}>#{rank}</div>
                                 <div
@@ -187,11 +205,9 @@ export default function SignalTopTab() {
                                     )}
                                 </div>
 
-                                {item.has_analysis && (
-                                    <div className={styles.expandToggle}>
-                                        {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                                    </div>
-                                )}
+                                <div className={styles.expandToggle}>
+                                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                </div>
                             </div>
 
                             <div className={styles.cardBody}>
@@ -211,6 +227,51 @@ export default function SignalTopTab() {
                                         </span>
                                     ))}
                                 </div>
+
+                                {/* EUM badges (notices/permits) */}
+                                {(item.notice_count > 0 || item.permit_count > 0) && (
+                                    <div className={styles.pills}>
+                                        {item.notice_count > 0 && (
+                                            <span
+                                                className={styles.pill}
+                                                style={{
+                                                    background: "#b91c1c18",
+                                                    color: "#b91c1c",
+                                                    borderColor: "#b91c1c30",
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                고시 {item.notice_count}건
+                                            </span>
+                                        )}
+                                        {item.permit_count > 0 && (
+                                            <span
+                                                className={styles.pill}
+                                                style={{
+                                                    background: "#7c3aed18",
+                                                    color: "#7c3aed",
+                                                    borderColor: "#7c3aed30",
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                인허가 {item.permit_count}건
+                                            </span>
+                                        )}
+                                        {item.has_pnu_match === 1 && (
+                                            <span
+                                                className={styles.pill}
+                                                style={{
+                                                    background: "#dc262618",
+                                                    color: "#dc2626",
+                                                    borderColor: "#dc262630",
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                필지 매칭
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Signal summary */}
                                 <div className={styles.signalSummary}>
@@ -232,6 +293,50 @@ export default function SignalTopTab() {
                                         </span>
                                     )}
                                 </div>
+
+                                {/* Notice details */}
+                                {item.notice_details && item.notice_details.length > 0 && (
+                                    <div className={styles.facilityList}>
+                                        {item.notice_details.slice(0, 5).map((n, i) => (
+                                            <span key={i} className={styles.facilityItem}>
+                                                <span style={{ color: "#b91c1c", fontWeight: 500 }}>고시</span>{" "}
+                                                {n.title.length > 60 ? n.title.slice(0, 60) + "..." : n.title}
+                                                {n.noticeDate && (
+                                                    <span style={{ color: "var(--text-muted)", fontSize: "11px", marginLeft: "4px" }}>
+                                                        ({n.noticeDate})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        ))}
+                                        {item.notice_details.length > 5 && (
+                                            <span className={styles.facilityItem} style={{ color: "var(--text-muted)" }}>
+                                                ... 외 {item.notice_details.length - 5}건
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Permit details */}
+                                {item.permit_details && item.permit_details.length > 0 && (
+                                    <div className={styles.facilityList}>
+                                        {item.permit_details.slice(0, 5).map((p, i) => (
+                                            <span key={i} className={styles.facilityItem}>
+                                                <span style={{ color: "#7c3aed", fontWeight: 500 }}>인허가</span>{" "}
+                                                {p.projectName.length > 50 ? p.projectName.slice(0, 50) + "..." : p.projectName}
+                                                {p.permitDate && (
+                                                    <span style={{ color: "var(--text-muted)", fontSize: "11px", marginLeft: "4px" }}>
+                                                        ({p.permitDate})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        ))}
+                                        {item.permit_details.length > 5 && (
+                                            <span className={styles.facilityItem} style={{ color: "var(--text-muted)" }}>
+                                                ... 외 {item.permit_details.length - 5}건
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Facility details */}
                                 {item.facility_details.length > 0 && (

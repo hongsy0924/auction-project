@@ -8,6 +8,7 @@
  * API returns XML in EUC-KR encoding.
  */
 import { getCachedLuris, setCachedLuris, type CachedLurisFacility } from "../minutes/cache";
+import { getXmlTag, getXmlTagAll } from "../xml-utils";
 
 const LURIS_BASE_URL = "https://apis.data.go.kr/1613000/arLandUseInfoService";
 
@@ -167,22 +168,6 @@ export async function searchLandUseCodes(
 }
 
 // ─── XML Parsers ──────────────────────────────────────────────────────
-
-function getXmlTag(xml: string, tag: string): string {
-    const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`);
-    const m = xml.match(re);
-    return m ? m[1].trim() : "";
-}
-
-function getXmlTagAll(xml: string, tag: string): string[] {
-    const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g");
-    const results: string[] = [];
-    let m;
-    while ((m = re.exec(xml)) !== null) {
-        results.push(m[1].trim());
-    }
-    return results;
-}
 
 function parseDTarLandUseInfoXml(xml: string): UrbanPlanFacility[] {
     const facilities: UrbanPlanFacility[] = [];
