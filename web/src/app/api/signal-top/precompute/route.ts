@@ -6,13 +6,16 @@ import {
     setRegionSignals,
     setPropertyScore,
     clearPropertyScores,
-    setPropertyAnalysis,
-    getPropertyAnalysis,
     type RegionSignal,
 } from "@/lib/minutes/cache";
 import { ClikClient } from "@/lib/minutes/clik-client";
 import { getUrbanPlanFacilities, type UrbanPlanFacility } from "@/lib/luris/client";
-import { MinutesService } from "@/lib/minutes/workflow";
+import {
+    getEumNotices,
+    getEumDevPermits,
+    getEumRestrictions,
+} from "@/lib/eum/client";
+import type { CachedEumNotice, CachedEumPermit, CachedEumRestriction } from "@/lib/minutes/cache";
 
 const SIGNAL_KEYWORDS = ["보상", "편입", "수용", "개발", "착공", "도시계획", "도로", "택지"];
 
@@ -39,25 +42,54 @@ export async function POST(request: NextRequest) {
     });
 }
 
-// --- Scoring formula ---
+// --- Scoring formula V2 ---
 
-function computeScore(signals: RegionSignal[], facilities: UrbanPlanFacility[]): number {
+function computeScoreV2(
+    signals: RegionSignal[],
+    facilities: UrbanPlanFacility[],
+    notices: CachedEumNotice[],
+    permits: CachedEumPermit[],
+    restrictions: CachedEumRestriction[],
+    pnu: string,
+): number {
     let score = 0;
 
+    // 1. EUM 고시정보 (strongest signal, 40 pts each)
+    score += notices.length * 40;
+
+    // PNU cross-match bonus: notice mentions this specific area
+    const pnuPrefix = pnu ? pnu.substring(0, 10) : "";
+    if (pnuPrefix) {
+        const pnuMatches = notices.filter((n) =>
+            n.relatedAddress && n.relatedAddress.length > 0
+        );
+        // Rough match: any notice in the same area gets partial bonus
+        score += Math.min(pnuMatches.length, 3) * 30;
+    }
+
+    // 2. EUM 개발인허가 (25 pts each, cap at 5)
+    score += Math.min(permits.length, 5) * 25;
+
+    // 3. EUM 행위제한 (5 pts each)
+    score += restrictions.length * 5;
+
+    // 4. LURIS urban plan facilities (10 pts + unexecuted 15 pts)
+    score += facilities.length * 10;
+    const unexecuted = facilities.filter(
+        (f) => f.executionStatus && f.executionStatus !== "집행완료"
+    );
+    score += unexecuted.length * 15;
+
+    // 5. CLIK signals (weakest, capped at 20)
+    let clikScore = 0;
     for (const signal of signals) {
         const weight =
             ["보상", "수용"].includes(signal.keyword) ? 20 :
             ["편입"].includes(signal.keyword) ? 15 :
             ["도시계획", "착공"].includes(signal.keyword) ? 10 : 2;
-        score += signal.doc_count * weight;
+        clikScore += signal.doc_count * weight;
     }
-
-    score += facilities.length * 10;
-
-    const unexecuted = facilities.filter(
-        (f) => f.executionStatus && f.executionStatus !== "집행완료"
-    );
-    score += unexecuted.length * 15;
+    score += Math.min(clikScore, 20);
 
     return score;
 }
@@ -69,11 +101,9 @@ async function fetchRegionSignals(
     councilCode: string,
     dongName: string,
 ): Promise<RegionSignal[]> {
-    // Check cache first
     const cached = await getRegionSignals(councilCode, dongName).catch(() => [] as RegionSignal[]);
     if (cached.length > 0) return cached;
 
-    // Cache miss → call CLIK API for all keywords in parallel
     const entries: { council_code: string; dong_name: string; keyword: string; doc_ids: string[]; doc_count: number }[] = [];
 
     const results = await Promise.allSettled(
@@ -101,9 +131,8 @@ async function fetchRegionSignals(
         }
     }
 
-    // Cache results
     if (entries.length > 0) {
-        await setRegionSignals(entries).catch(() => { /* ignore cache write error */ });
+        await setRegionSignals(entries).catch(() => {});
     }
 
     return entries.map((e) => ({
@@ -117,20 +146,48 @@ async function fetchRegionSignals(
     }));
 }
 
-// --- Background processing ---
+// --- EUM pre-indexing ---
 
-interface ScoredItem {
-    docId: string;
-    address: string;
-    dong: string;
-    pnu: string;
-    sido: string;
-    sigungu: string;
-    score: number;
-    councilCodes: string[];
-    facilities: UrbanPlanFacility[];
-    auctionData: Record<string, unknown>;
+interface EumData {
+    notices: CachedEumNotice[];
+    permits: CachedEumPermit[];
+    restrictions: CachedEumRestriction[];
 }
+
+async function preIndexEumData(areaCodes: string[]): Promise<Map<string, EumData>> {
+    const eumCache = new Map<string, EumData>();
+    console.log(`[Precompute] Pre-indexing EUM data for ${areaCodes.length} area codes...`);
+
+    for (let i = 0; i < areaCodes.length; i++) {
+        const areaCd = areaCodes[i];
+        if (i > 0 && i % 20 === 0) {
+            console.log(`[Precompute] EUM progress: ${i}/${areaCodes.length}`);
+        }
+
+        try {
+            const [notices, permits, restrictions] = await Promise.all([
+                getEumNotices(areaCd),
+                getEumDevPermits(areaCd),
+                getEumRestrictions(areaCd),
+            ]);
+
+            eumCache.set(areaCd, { notices, permits, restrictions });
+        } catch (err) {
+            console.error(`[Precompute] EUM error for ${areaCd}:`, err);
+            eumCache.set(areaCd, { notices: [], permits: [], restrictions: [] });
+        }
+
+        // Rate limiting between API calls (skip if cache hit)
+        if (i < areaCodes.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+    }
+
+    console.log(`[Precompute] EUM pre-indexing complete: ${eumCache.size} area codes`);
+    return eumCache;
+}
+
+// --- Background processing ---
 
 async function processAllItems(batchId: string) {
     console.log(`[Precompute] Starting batch ${batchId}`);
@@ -151,15 +208,28 @@ async function processAllItems(batchId: string) {
     }
     console.log(`[Precompute] Loaded ${allItems.length} auction items`);
 
+    // Collect unique area codes (PNU first 5 digits) for EUM pre-indexing
+    const areaCodeSet = new Set<string>();
+    for (const item of allItems) {
+        const pnu = String(item["PNU"] || "");
+        if (pnu && pnu.length >= 5) {
+            areaCodeSet.add(pnu.substring(0, 5));
+        }
+    }
+    const areaCodes = [...areaCodeSet];
+    console.log(`[Precompute] Found ${areaCodes.length} unique area codes`);
+
+    // Pre-index EUM data (notices, permits, restrictions per area code)
+    const eumCache = await preIndexEumData(areaCodes);
+
     // Clear previous scores
     console.log(`[Precompute] Clearing previous scores...`);
     await clearPropertyScores();
-    console.log(`[Precompute] Scores cleared. Starting Phase A...`);
+    console.log(`[Precompute] Scores cleared. Starting scoring...`);
 
-    // Phase A: Score all items
-    // Pre-fetch signals per unique (councilCode, dong) to avoid redundant API calls
+    // Score all items
     const signalCache = new Map<string, RegionSignal[]>();
-    const scored: ScoredItem[] = [];
+    let scoredCount = 0;
     let resolvedCount = 0;
     let dongCount = 0;
 
@@ -170,14 +240,12 @@ async function processAllItems(batchId: string) {
         const docId = String(item["고유키"] || "");
         if (!address || !docId) continue;
 
-        // Log first few items for debugging
         if (idx < 3) {
             console.log(`[Precompute] Processing item ${idx}: address="${address.substring(0, 30)}..." pnu="${pnu}"`);
         }
 
-        // Progress log every 100 items
         if (idx > 0 && idx % 100 === 0) {
-            console.log(`[Precompute] Progress: ${idx}/${allItems.length} (resolved=${resolvedCount}, dong=${dongCount}, scored=${scored.length}, regions=${signalCache.size})`);
+            console.log(`[Precompute] Progress: ${idx}/${allItems.length} (resolved=${resolvedCount}, scored=${scoredCount}, regions=${signalCache.size})`);
         }
 
         try {
@@ -186,30 +254,31 @@ async function processAllItems(batchId: string) {
             resolvedCount++;
             if (location.dong) dongCount++;
 
-            // Use only the most specific council (first = 시군구, skip 도/시 level)
-            // This prevents score inflation from generic parent-level signals
             const primaryCouncil = location.councilCodes[0];
             const cacheKey = `${primaryCouncil.code}::${location.dong || ""}`;
             let signals = signalCache.get(cacheKey);
             if (!signals) {
-                if (idx < 3) console.log(`[Precompute] Fetching signals for ${cacheKey}...`);
                 signals = await fetchRegionSignals(clikClient, primaryCouncil.code, location.dong || "");
                 signalCache.set(cacheKey, signals);
-                if (idx < 3) console.log(`[Precompute] Got ${signals.length} signal entries for ${cacheKey}`);
             }
             const signalResults = signals.filter((s) => s.doc_count > 0);
 
-            // Get LURIS facilities (cached with 30-day TTL)
+            // LURIS facilities
             let facilities: UrbanPlanFacility[] = [];
             if (pnu) {
                 try {
-                    if (idx < 3) console.log(`[Precompute] Fetching LURIS for PNU ${pnu}...`);
                     facilities = await getUrbanPlanFacilities(pnu);
-                    if (idx < 3) console.log(`[Precompute] Got ${facilities.length} facilities`);
-                } catch { /* LURIS API failure is non-fatal */ }
+                } catch { /* non-fatal */ }
             }
 
-            const score = computeScore(signalResults, facilities);
+            // EUM data (pre-indexed by area code)
+            const areaCd = pnu && pnu.length >= 5 ? pnu.substring(0, 5) : "";
+            const eumData = areaCd ? eumCache.get(areaCd) : undefined;
+            const notices = eumData?.notices || [];
+            const permits = eumData?.permits || [];
+            const restrictions = eumData?.restrictions || [];
+
+            const score = computeScoreV2(signalResults, facilities, notices, permits, restrictions, pnu);
             if (score === 0) continue;
 
             const hasCompensation = signalResults.some((s) =>
@@ -218,27 +287,11 @@ async function processAllItems(batchId: string) {
             const hasUnexecuted = facilities.some(
                 (f) => f.executionStatus && f.executionStatus !== "집행완료"
             );
+            const hasPnuMatch = notices.some((n) =>
+                n.relatedAddress && n.relatedAddress.length > 0
+            ) ? 1 : 0;
 
-            scored.push({
-                docId, address,
-                dong: location.dong || String(item["동"] || ""),
-                pnu,
-                sido: location.sido,
-                sigungu: location.sigungu,
-                score,
-                councilCodes: [primaryCouncil.code],
-                facilities,
-                auctionData: {
-                    사건번호: item["사건번호"],
-                    물건종류: item["물건종류"],
-                    지목: item["지목"],
-                    감정평가액: item["감정평가액"],
-                    최저매각가격: item["최저매각가격"],
-                    "%": item["%"],
-                    매각기일: item["매각기일"],
-                    면적: item["면적"],
-                },
-            });
+            scoredCount++;
 
             await setPropertyScore({
                 doc_id: docId,
@@ -268,6 +321,32 @@ async function processAllItems(batchId: string) {
                         executionStatus: f.executionStatus,
                     }))
                 ),
+                notice_count: notices.length,
+                permit_count: permits.length,
+                restriction_count: restrictions.length,
+                has_pnu_match: hasPnuMatch,
+                notice_details: JSON.stringify(
+                    notices.slice(0, 20).map((n) => ({
+                        title: n.title,
+                        noticeType: n.noticeType,
+                        noticeDate: n.noticeDate,
+                    }))
+                ),
+                permit_details: JSON.stringify(
+                    permits.slice(0, 20).map((p) => ({
+                        projectName: p.projectName,
+                        permitType: p.permitType,
+                        permitDate: p.permitDate,
+                        area: p.area,
+                    }))
+                ),
+                restriction_details: JSON.stringify(
+                    restrictions.slice(0, 10).map((r) => ({
+                        zoneName: r.zoneName,
+                        restrictionType: r.restrictionType,
+                        description: r.description,
+                    }))
+                ),
                 auction_data: JSON.stringify({
                     사건번호: item["사건번호"],
                     물건종류: item["물건종류"],
@@ -285,49 +364,7 @@ async function processAllItems(batchId: string) {
         }
     }
 
-    console.log(`[Precompute] Phase A complete: ${scored.length} items scored (${resolvedCount} resolved, ${signalCache.size} unique regions)`);
-
-    // Phase B: Deep analysis (top scored only, with threshold + cap)
-    scored.sort((a, b) => b.score - a.score);
-
-    const ANALYSIS_THRESHOLD = 50;
-    const MAX_ANALYSES = 20;
-    const toAnalyze = scored.filter(s => s.score >= ANALYSIS_THRESHOLD).slice(0, MAX_ANALYSES);
-
-    console.log(`[Precompute] Phase B: ${toAnalyze.length} items above threshold ${ANALYSIS_THRESHOLD} (max ${MAX_ANALYSES})`);
-
-    const service = new MinutesService(clikApiKey);
-    let analyzed = 0;
-
-    for (let i = 0; i < toAnalyze.length; i++) {
-        const { docId, address, dong, pnu, councilCodes, facilities } = toAnalyze[i];
-
-        // Skip if already analyzed
-        const existing = await getPropertyAnalysis(docId);
-        if (existing) {
-            console.log(`[Precompute] Skipping ${docId} (already analyzed)`);
-            continue;
-        }
-
-        try {
-            console.log(`[Precompute] Analyzing ${analyzed + 1}: ${address} (score=${toAnalyze[i].score})`);
-            const markdown = await service.processPropertyAnalysis(
-                address, dong, pnu, councilCodes, facilities
-            );
-            await setPropertyAnalysis(docId, markdown);
-            analyzed++;
-            console.log(`[Precompute] Analysis saved for ${docId}`);
-        } catch (err) {
-            console.error(`[Precompute] Analysis failed for ${address}:`, err);
-        }
-
-        // Rate limiting between analyses
-        if (i < toAnalyze.length - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-    }
-
     console.log(
-        `[Precompute] Batch ${batchId} complete. Scored: ${scored.length}, Analyzed: ${analyzed}`
+        `[Precompute] Batch ${batchId} complete. Scored: ${scoredCount}/${allItems.length} (resolved=${resolvedCount}, regions=${signalCache.size}, eumAreas=${eumCache.size})`
     );
 }
