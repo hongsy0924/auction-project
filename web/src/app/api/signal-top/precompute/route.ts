@@ -54,42 +54,49 @@ function computeScoreV2(
 ): number {
     let score = 0;
 
-    // 1. EUM 고시정보 (strongest signal, 40 pts each)
-    score += notices.length * 40;
+    // === TIER 1: 도시계획시설 (핵심 — 보상대상 여부가 최우선) ===
+    const unexecuted = facilities.filter(
+        (f) => f.executionStatus && f.executionStatus !== "집행완료"
+    );
+    score += unexecuted.length * 50;   // 미집행 시설 = 보상대상 가능성
+    score += (facilities.length - unexecuted.length) * 5; // 집행완료 시설
 
-    // PNU cross-match bonus: notice mentions this specific area
+    // === TIER 2: 보상/수용/편입 시그널 (회의록 직접 언급) ===
+    let compensationSignal = 0;
+    let otherSignal = 0;
+    for (const signal of signals) {
+        if (["보상", "수용", "편입"].includes(signal.keyword)) {
+            compensationSignal += signal.doc_count * 15;
+        } else if (["도시계획", "착공"].includes(signal.keyword)) {
+            otherSignal += signal.doc_count * 5;
+        } else {
+            otherSignal += signal.doc_count * 1;
+        }
+    }
+    score += Math.min(compensationSignal, 60);
+    score += Math.min(otherSignal, 15);
+
+    // === TIER 3: EUM 고시 (보상 관련 고시만 고점수) ===
+    const compensationNotices = notices.filter((n) =>
+        n.title && (n.title.includes("보상") || n.title.includes("수용") ||
+        n.title.includes("편입") || n.title.includes("도시계획"))
+    );
+    const otherNotices = notices.length - compensationNotices.length;
+    score += compensationNotices.length * 20;
+    score += Math.min(otherNotices, 3) * 5;
+
+    // PNU cross-match bonus
     const pnuPrefix = pnu ? pnu.substring(0, 10) : "";
     if (pnuPrefix) {
         const pnuMatches = notices.filter((n) =>
             n.relatedAddress && n.relatedAddress.length > 0
         );
-        // Rough match: any notice in the same area gets partial bonus
-        score += Math.min(pnuMatches.length, 3) * 30;
+        score += Math.min(pnuMatches.length, 2) * 15;
     }
 
-    // 2. EUM 개발인허가 (25 pts each, cap at 5)
-    score += Math.min(permits.length, 5) * 25;
-
-    // 3. EUM 행위제한 (5 pts each)
-    score += restrictions.length * 5;
-
-    // 4. LURIS urban plan facilities (10 pts + unexecuted 15 pts)
-    score += facilities.length * 10;
-    const unexecuted = facilities.filter(
-        (f) => f.executionStatus && f.executionStatus !== "집행완료"
-    );
-    score += unexecuted.length * 15;
-
-    // 5. CLIK signals (weakest, capped at 20)
-    let clikScore = 0;
-    for (const signal of signals) {
-        const weight =
-            ["보상", "수용"].includes(signal.keyword) ? 20 :
-            ["편입"].includes(signal.keyword) ? 15 :
-            ["도시계획", "착공"].includes(signal.keyword) ? 10 : 2;
-        clikScore += signal.doc_count * weight;
-    }
-    score += Math.min(clikScore, 20);
+    // === TIER 4: 인허가/행위제한 (참고 수준) ===
+    score += Math.min(permits.length, 3) * 10;
+    score += Math.min(restrictions.length, 3) * 3;
 
     return score;
 }
@@ -239,6 +246,10 @@ async function processAllItems(batchId: string) {
         const pnu = String(item["PNU"] || "");
         const docId = String(item["고유키"] || "");
         if (!address || !docId) continue;
+
+        // Exclude housing items from scoring
+        const itemType = String(item["물건종류"] || "");
+        if (itemType.includes("주택")) continue;
 
         if (idx < 3) {
             console.log(`[Precompute] Processing item ${idx}: address="${address.substring(0, 30)}..." pnu="${pnu}"`);

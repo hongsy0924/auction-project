@@ -88,7 +88,7 @@ fi
 echo "$LOG_PREFIX [5/7] Indexing region signals..."
 cd "$CRAWLER_DIR"
 export MINUTES_CACHE_PATH="$CRAWLER_DIR/output/minutes_cache.db"
-python scripts/index_region_signals.py "$OUTPUT_DB" || echo "$LOG_PREFIX Warning: region signal indexing failed"
+python scripts/index_region_signals.py --db-path "$OUTPUT_DB" --cache-path "$MINUTES_CACHE_PATH" || echo "$LOG_PREFIX Warning: region signal indexing failed"
 
 # --- 4.6 minutes_cache.db 전송 ---
 echo "$LOG_PREFIX [6/7] Transferring minutes_cache.db to Fly.io..."

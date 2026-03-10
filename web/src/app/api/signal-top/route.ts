@@ -11,13 +11,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const perPage = Math.min(100, Math.max(1, parseInt(searchParams.get("per_page") || "20", 10)));
+
+    // Cap total results at 100 (top scores only)
+    const MAX_RESULTS = 100;
     const offset = (page - 1) * perPage;
 
+    if (offset >= MAX_RESULTS) {
+        return Response.json({ data: [], total: MAX_RESULTS, page, perPage });
+    }
+
+    const adjustedLimit = Math.min(perPage, MAX_RESULTS - offset);
+
     try {
-        const [items, total] = await Promise.all([
-            getPropertyScores(perPage, offset),
+        const [items, rawTotal] = await Promise.all([
+            getPropertyScores(adjustedLimit, offset),
             getPropertyScoreCount(),
         ]);
+
+        const total = Math.min(rawTotal, MAX_RESULTS);
 
         const docIds = items.map((i) => i.doc_id);
         const analysisMap = await getPropertyAnalysisBatch(docIds);
