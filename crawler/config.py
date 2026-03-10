@@ -56,6 +56,12 @@ CACHE_CONFIG: dict[str, Any] = {
     'max_size': 1000  # 최대 캐시 항목 수
 }
 
+# CLIK 의회 회의록 API 설정
+COUNCIL_API_CONFIG: dict[str, Any] = {
+    'base_url': 'https://clik.nanet.go.kr/openapi/minutes.do',
+    'api_key': os.getenv('CLIK_API_KEY', ''),
+}
+
 # 디렉토리 생성
 for directory in [FILE_CONFIG['output_dir'], FILE_CONFIG['cache_dir'], FILE_CONFIG['log_dir']]:
     os.makedirs(directory, exist_ok=True)

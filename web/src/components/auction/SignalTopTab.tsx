@@ -92,6 +92,30 @@ export default function SignalTopTab() {
     const [analysisCache, setAnalysisCache] = useState<Record<string, string>>({});
     const [analysisLoading, setAnalysisLoading] = useState<string | null>(null);
 
+    type SortKey = "score" | "facility" | "compensation";
+    const [sortBy, setSortBy] = useState<SortKey>("score");
+    const [filterCompensation, setFilterCompensation] = useState(false);
+
+    const sortedItems = React.useMemo(() => {
+        let filtered = [...items];
+        if (filterCompensation) {
+            filtered = filtered.filter((item) => item.has_compensation === 1 || item.has_unexecuted === 1);
+        }
+        if (sortBy === "facility") {
+            filtered.sort((a, b) => b.facility_count - a.facility_count || b.score - a.score);
+        } else if (sortBy === "compensation") {
+            filtered.sort((a, b) => (b.has_compensation + b.has_unexecuted) - (a.has_compensation + a.has_unexecuted) || b.score - a.score);
+        }
+        return filtered;
+    }, [items, sortBy, filterCompensation]);
+
+    const stats = React.useMemo(() => ({
+        total,
+        compensationCount: items.filter((i) => i.has_compensation === 1).length,
+        unexecutedCount: items.filter((i) => i.has_unexecuted === 1).length,
+        avgScore: items.length > 0 ? Math.round(items.reduce((s, i) => s + i.score, 0) / items.length) : 0,
+    }), [items, total]);
+
     useEffect(() => {
         setLoading(true);
         fetch(`/api/signal-top?page=${page}&per_page=${perPage}`)
@@ -152,12 +176,50 @@ export default function SignalTopTab() {
 
     return (
         <div className={styles.container}>
-            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
-                {total}건
+            {/* Summary stats bar */}
+            <div className={styles.statsBar}>
+                <div className={styles.statItem}>
+                    <span className={styles.statValue}>{stats.total}</span>
+                    <span className={styles.statLabel}>전체</span>
+                </div>
+                <div className={styles.statItem}>
+                    <span className={styles.statValue} style={{ color: "#dc2626" }}>{stats.compensationCount}</span>
+                    <span className={styles.statLabel}>보상 시그널</span>
+                </div>
+                <div className={styles.statItem}>
+                    <span className={styles.statValue} style={{ color: "#ea580c" }}>{stats.unexecutedCount}</span>
+                    <span className={styles.statLabel}>미집행 시설</span>
+                </div>
+                <div className={styles.statItem}>
+                    <span className={styles.statValue}>{stats.avgScore}</span>
+                    <span className={styles.statLabel}>평균 점수</span>
+                </div>
+            </div>
+
+            {/* Sort/Filter controls */}
+            <div className={styles.controls}>
+                <div className={styles.sortGroup}>
+                    {(["score", "facility", "compensation"] as SortKey[]).map((key) => (
+                        <button
+                            key={key}
+                            className={`${styles.sortBtn} ${sortBy === key ? styles.sortBtnActive : ""}`}
+                            onClick={() => setSortBy(key)}
+                        >
+                            {key === "score" ? "점수순" : key === "facility" ? "시설순" : "보상순"}
+                        </button>
+                    ))}
+                </div>
+                <button
+                    className={`${styles.filterBtn} ${filterCompensation ? styles.filterBtnActive : ""}`}
+                    onClick={() => setFilterCompensation(!filterCompensation)}
+                >
+                    <AlertTriangle size={13} />
+                    보상대상만
+                </button>
             </div>
 
             <div className={styles.cardList}>
-                {items.map((item, idx) => {
+                {sortedItems.map((item, idx) => {
                     const rank = (page - 1) * perPage + idx + 1;
                     const isExpanded = expandedId === item.doc_id;
                     const analysis = analysisCache[item.doc_id];
@@ -186,7 +248,9 @@ export default function SignalTopTab() {
                                     <div className={styles.cardMeta}>
                                         {auc["사건번호"] && <span>{String(auc["사건번호"])}</span>}
                                         {auc["물건종류"] && <span>{String(auc["물건종류"])}</span>}
+                                        {auc["지목"] && <span>{String(auc["지목"])}</span>}
                                         {auc["면적"] && <span>{String(auc["면적"])}</span>}
+                                        {auc["매각기일"] && <span>{String(auc["매각기일"])}</span>}
                                     </div>
                                     {(auc["감정평가액"] || auc["최저매각가격"]) && (
                                         <div className={styles.cardPrice}>
@@ -292,6 +356,19 @@ export default function SignalTopTab() {
                                             보상 시그널
                                         </span>
                                     )}
+                                </div>
+
+                                {/* Score breakdown */}
+                                <div className={styles.scoreBreakdown}>
+                                    {item.facility_count > 0 && (
+                                        <span className={styles.breakdownItem}>
+                                            시설 {item.facility_count}
+                                            {item.has_unexecuted === 1 && <span className={styles.unexecutedDot} />}
+                                        </span>
+                                    )}
+                                    {item.notice_count > 0 && <span className={styles.breakdownItem}>고시 {item.notice_count}</span>}
+                                    {item.permit_count > 0 && <span className={styles.breakdownItem}>인허가 {item.permit_count}</span>}
+                                    {item.signal_count > 0 && <span className={styles.breakdownItem}>회의록 {item.signal_count}</span>}
                                 </div>
 
                                 {/* Notice details */}
