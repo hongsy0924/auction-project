@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
     const authHeader = request.headers.get("authorization");
     const secret = process.env.PRECOMPUTE_SECRET;
-    console.log(`[Precompute] Auth debug: header=${JSON.stringify(authHeader)}, secret_len=${secret?.length}, match=${authHeader === \`Bearer \${secret}\`}`);
+    console.log("[Precompute] Auth debug:", JSON.stringify({ header: authHeader, secret_len: secret?.length, match: authHeader === `Bearer ${secret}` }));
     if (!secret || authHeader !== `Bearer ${secret}`) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
