@@ -123,4 +123,8 @@ COLUMN_MAPPING: dict[str, str] = {
     "pnu": "PNU",
     "wgs84Xcordi": "경도",
     "wgs84Ycordi": "위도",
+    "land_price_per_sqm": "공시지가(원/㎡)",
+    "land_price_total": "공시지가총액",
+    "min_to_official_ratio": "최저가/공시지가비율",
+    "facility_age_years": "시설경과연수",
 }

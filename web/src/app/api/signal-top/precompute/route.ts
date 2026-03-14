@@ -6,6 +6,7 @@ import {
     setRegionSignals,
     setPropertyScore,
     clearPropertyScores,
+    getPropertyScores,
     type RegionSignal,
 } from "@/lib/minutes/cache";
 import { ClikClient } from "@/lib/minutes/clik-client";
@@ -14,8 +15,18 @@ import {
     getEumNotices,
     getEumDevPermits,
     getEumRestrictions,
+    filterRelevantGosi,
+    matchGosiToDong,
+    extractHotZones,
 } from "@/lib/eum/client";
 import type { CachedEumNotice, CachedEumPermit, CachedEumRestriction } from "@/lib/minutes/cache";
+import { calculateScore } from "@/lib/scoring/engine";
+import {
+    setCachedGosiMatches,
+    setHotZoneAlerts,
+    type CachedGosiMatch,
+} from "@/lib/minutes/cache";
+import { reverseMatchHotZones } from "@/lib/eum/reverse-match";
 
 const SIGNAL_KEYWORDS = ["보상", "편입", "수용", "개발", "착공", "도시계획", "도로", "택지"];
 
@@ -42,64 +53,7 @@ export async function POST(request: NextRequest) {
     });
 }
 
-// --- Scoring formula V2 ---
-
-function computeScoreV2(
-    signals: RegionSignal[],
-    facilities: UrbanPlanFacility[],
-    notices: CachedEumNotice[],
-    permits: CachedEumPermit[],
-    restrictions: CachedEumRestriction[],
-    pnu: string,
-): number {
-    let score = 0;
-
-    // === TIER 1: 도시계획시설 (핵심 — 보상대상 여부가 최우선) ===
-    const unexecuted = facilities.filter(
-        (f) => f.executionStatus && f.executionStatus !== "집행완료"
-    );
-    score += unexecuted.length * 50;   // 미집행 시설 = 보상대상 가능성
-    score += (facilities.length - unexecuted.length) * 5; // 집행완료 시설
-
-    // === TIER 2: 보상/수용/편입 시그널 (회의록 직접 언급) ===
-    let compensationSignal = 0;
-    let otherSignal = 0;
-    for (const signal of signals) {
-        if (["보상", "수용", "편입"].includes(signal.keyword)) {
-            compensationSignal += signal.doc_count * 15;
-        } else if (["도시계획", "착공"].includes(signal.keyword)) {
-            otherSignal += signal.doc_count * 5;
-        } else {
-            otherSignal += signal.doc_count * 1;
-        }
-    }
-    score += Math.min(compensationSignal, 60);
-    score += Math.min(otherSignal, 15);
-
-    // === TIER 3: EUM 고시 (보상 관련 고시만 고점수) ===
-    const compensationNotices = notices.filter((n) =>
-        n.title && (n.title.includes("보상") || n.title.includes("수용") ||
-        n.title.includes("편입") || n.title.includes("도시계획"))
-    );
-    const otherNotices = notices.length - compensationNotices.length;
-    score += compensationNotices.length * 20;
-    score += Math.min(otherNotices, 3) * 5;
-
-    // PNU cross-match bonus
-    const pnuPrefix = pnu ? pnu.substring(0, 10) : "";
-    if (pnuPrefix) {
-        const pnuMatches = notices.filter((n) =>
-            n.relatedAddress && n.relatedAddress.length > 0
-        );
-        score += Math.min(pnuMatches.length, 2) * 15;
-    }
-
-    // === TIER 4: 인허가/행위제한 (참고 수준) ===
-    score += Math.min(permits.length, 3) * 10;
-    score += Math.min(restrictions.length, 3) * 3;
-
-    return score;
-}
+// computeScoreV2 is replaced by the scoring engine in @/lib/scoring/engine
 
 // --- Fetch region signals (cache-first, then CLIK API) ---
 
@@ -229,6 +183,14 @@ async function processAllItems(batchId: string) {
     // Pre-index EUM data (notices, permits, restrictions per area code)
     const eumCache = await preIndexEumData(areaCodes);
 
+    // Hot zone detection from stage 3-4 gosi notices
+    const allHotZones: import("@/lib/eum/client").HotZone[] = [];
+    for (const [, eumData] of eumCache) {
+        const zones = extractHotZones(eumData.notices);
+        allHotZones.push(...zones);
+    }
+    console.log(`[Precompute] Found ${allHotZones.length} hot zones from stage 3-4 gosi`);
+
     // Clear previous scores
     console.log(`[Precompute] Clearing previous scores...`);
     await clearPropertyScores();
@@ -289,29 +251,62 @@ async function processAllItems(batchId: string) {
             const permits = eumData?.permits || [];
             const restrictions = eumData?.restrictions || [];
 
-            const score = computeScoreV2(signalResults, facilities, notices, permits, restrictions, pnu);
-            if (score === 0) continue;
+            // Gosi matching for this property
+            const relevantGosi = filterRelevantGosi(notices);
+            const dongName = location.dong || String(item["동"] || "");
+            const gosiMatches = matchGosiToDong(relevantGosi, dongName);
+            const maxGosiStage = gosiMatches.length > 0
+                ? Math.max(...gosiMatches.map((m) => m.gosiStage))
+                : 0;
+
+            // Cache gosi matches
+            if (gosiMatches.length > 0) {
+                const cacheable: CachedGosiMatch[] = gosiMatches.map((m) => ({
+                    doc_id: docId,
+                    gosi_title: m.notice.title,
+                    gosi_stage: m.gosiStage,
+                    ntc_date: m.notice.noticeDate,
+                    match_type: m.matchType,
+                    area_cd: m.notice.areaCd,
+                    last_updated: Date.now(),
+                }));
+                setCachedGosiMatches(cacheable).catch(() => {});
+            }
+
+            // New scoring engine
+            const yuchalCount = parseInt(String(item["유찰회수"] || "0"), 10) || 0;
+            const minToOfficialRatio = parseFloat(String(item["최저가/공시지가비율"] || "0")) || undefined;
+            const facilityAgeYears = parseFloat(String(item["시설경과연수"] || "0")) || undefined;
+
+            const scoreResult = calculateScore({
+                facilityInclude: String(item["포함"] || ""),
+                facilityConflict: String(item["저촉"] || ""),
+                facilityAdjoin: String(item["접합"] || ""),
+                facilityAgeYears,
+                gosiStage: maxGosiStage,
+                minToOfficialRatio,
+                yuchalCount,
+            });
+
+            if (scoreResult.total === 0) continue;
 
             const hasCompensation = signalResults.some((s) =>
                 ["보상", "수용", "편입"].includes(s.keyword)
-            );
+            ) || maxGosiStage >= 3;
             const hasUnexecuted = facilities.some(
                 (f) => f.executionStatus && f.executionStatus !== "집행완료"
             );
-            const hasPnuMatch = notices.some((n) =>
-                n.relatedAddress && n.relatedAddress.length > 0
-            ) ? 1 : 0;
 
             scoredCount++;
 
             await setPropertyScore({
                 doc_id: docId,
                 address,
-                dong: location.dong || String(item["동"] || ""),
+                dong: dongName,
                 pnu,
                 sido: location.sido,
                 sigungu: location.sigungu,
-                score,
+                score: scoreResult.total,
                 signal_count: signalResults.reduce((sum, s) => sum + s.doc_count, 0),
                 signal_keywords: JSON.stringify([...new Set(signalResults.map((s) => s.keyword))]),
                 facility_count: facilities.length,
@@ -335,7 +330,7 @@ async function processAllItems(batchId: string) {
                 notice_count: notices.length,
                 permit_count: permits.length,
                 restriction_count: restrictions.length,
-                has_pnu_match: hasPnuMatch,
+                has_pnu_match: notices.some((n) => n.relatedAddress && n.relatedAddress.length > 0) ? 1 : 0,
                 notice_details: JSON.stringify(
                     notices.slice(0, 20).map((n) => ({
                         title: n.title,
@@ -367,11 +362,45 @@ async function processAllItems(batchId: string) {
                     "%": item["%"],
                     매각기일: item["매각기일"],
                     면적: item["면적"],
+                    유찰회수: item["유찰회수"],
+                    "공시지가(원/㎡)": item["공시지가(원/㎡)"],
+                    공시지가총액: item["공시지가총액"],
+                    "최저가/공시지가비율": item["최저가/공시지가비율"],
+                    시설경과연수: item["시설경과연수"],
+                    score_breakdown: scoreResult.components,
+                    gosi_stage: maxGosiStage,
                 }),
                 batch_id: batchId,
             });
         } catch (err) {
             console.error(`[Precompute] Error scoring ${address}:`, err);
+        }
+    }
+
+    // Reverse match hot zones with scored items
+    if (allHotZones.length > 0) {
+        try {
+            const scoredItems = await getPropertyScores({ limit: 200 });
+            const reverseAlerts = reverseMatchHotZones(
+                allHotZones,
+                scoredItems.map((s) => ({ doc_id: s.doc_id, dong: s.dong, pnu: s.pnu }))
+            );
+            if (reverseAlerts.length > 0) {
+                const cacheAlerts = reverseAlerts.map((a) => ({
+                    alert_id: `${a.zone.areaCd}_${a.zone.gosiStage}_${Date.now()}`,
+                    zone_title: a.zone.gosiTitle,
+                    zone_stage: a.zone.gosiStage,
+                    zone_area_cd: a.zone.areaCd,
+                    zone_dong_names: JSON.stringify(a.zone.dongNames),
+                    matched_doc_ids: JSON.stringify(a.matchedDocIds),
+                    created_at: Date.now(),
+                    reviewed: 0,
+                }));
+                await setHotZoneAlerts(cacheAlerts);
+                console.log(`[Precompute] Saved ${cacheAlerts.length} hot zone alerts`);
+            }
+        } catch (err) {
+            console.error("[Precompute] Hot zone reverse matching error:", err);
         }
     }
 

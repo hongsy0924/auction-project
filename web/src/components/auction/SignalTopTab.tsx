@@ -56,6 +56,8 @@ interface SignalTopItem {
     permit_details: PermitDetail[];
     auction_data: Record<string, string | number | undefined>;
     has_analysis: boolean;
+    score_breakdown?: Record<string, { raw: number; weighted: number }>;
+    gosi_stage?: number;
 }
 
 const KEYWORD_COLORS: Record<string, string> = {
@@ -70,11 +72,33 @@ const KEYWORD_COLORS: Record<string, string> = {
 };
 
 function getScoreColor(score: number): string {
-    if (score >= 80) return "#dc2626";
-    if (score >= 50) return "#ea580c";
-    if (score >= 30) return "#ca8a04";
+    const pct = score <= 1 ? score * 100 : score; // handle both 0-1 and legacy 0-200
+    if (pct >= 80) return "#dc2626";
+    if (pct >= 50) return "#ea580c";
+    if (pct >= 30) return "#ca8a04";
     return "#059669";
 }
+
+function formatScore(score: number): string {
+    if (score <= 1) return `${Math.round(score * 100)}%`;
+    return String(score); // legacy format
+}
+
+const GOSI_STAGE_LABELS: Record<number, string> = {
+    0: "-",
+    1: "결정",
+    2: "실시계획",
+    3: "사업인정",
+    4: "보상",
+};
+
+const GOSI_STAGE_COLORS: Record<number, string> = {
+    0: "#9ca3af",
+    1: "#2563eb",
+    2: "#7c3aed",
+    3: "#ea580c",
+    4: "#dc2626",
+};
 
 function formatPrice(n: number): string {
     if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(n % 100_000_000 === 0 ? 0 : 1)}억`;
@@ -92,22 +116,13 @@ export default function SignalTopTab() {
     const [analysisCache, setAnalysisCache] = useState<Record<string, string>>({});
     const [analysisLoading, setAnalysisLoading] = useState<string | null>(null);
 
-    type SortKey = "score" | "facility" | "compensation";
+    type SortKey = "score" | "facility" | "compensation" | "price_ratio" | "facility_age" | "gosi_stage";
     const [sortBy, setSortBy] = useState<SortKey>("score");
     const [filterCompensation, setFilterCompensation] = useState(false);
+    const [excludeHousing, setExcludeHousing] = useState(true);
 
-    const sortedItems = React.useMemo(() => {
-        let filtered = [...items];
-        if (filterCompensation) {
-            filtered = filtered.filter((item) => item.has_compensation === 1 || item.has_unexecuted === 1);
-        }
-        if (sortBy === "facility") {
-            filtered.sort((a, b) => b.facility_count - a.facility_count || b.score - a.score);
-        } else if (sortBy === "compensation") {
-            filtered.sort((a, b) => (b.has_compensation + b.has_unexecuted) - (a.has_compensation + a.has_unexecuted) || b.score - a.score);
-        }
-        return filtered;
-    }, [items, sortBy, filterCompensation]);
+    // Items are already sorted/filtered server-side
+    const sortedItems = items;
 
     const stats = React.useMemo(() => ({
         total,
@@ -116,17 +131,35 @@ export default function SignalTopTab() {
         avgScore: items.length > 0 ? Math.round(items.reduce((s, i) => s + i.score, 0) / items.length) : 0,
     }), [items, total]);
 
+    // Reset page when sort/filter changes
+    useEffect(() => {
+        setPage(1);
+    }, [sortBy, filterCompensation, excludeHousing]);
+
     useEffect(() => {
         setLoading(true);
-        fetch(`/api/signal-top?page=${page}&per_page=${perPage}`)
+        const params = new URLSearchParams({
+            page: String(page),
+            per_page: String(perPage),
+            sort: sortBy,
+        });
+        if (filterCompensation) params.set("filter_compensation", "1");
+        if (excludeHousing) params.set("exclude_housing", "1");
+
+        fetch(`/api/signal-top?${params}`)
             .then((res) => res.json())
             .then((data) => {
-                setItems(data.data || []);
+                const mappedItems = (data.data || []).map((item: SignalTopItem) => ({
+                    ...item,
+                    score_breakdown: item.auction_data?.score_breakdown,
+                    gosi_stage: item.auction_data?.gosi_stage ?? 0,
+                }));
+                setItems(mappedItems);
                 setTotal(data.total || 0);
                 setLoading(false);
             })
             .catch(() => setLoading(false));
-    }, [page, perPage]);
+    }, [page, perPage, sortBy, filterCompensation, excludeHousing]);
 
     const totalPages = Math.ceil(total / perPage);
 
@@ -199,16 +232,23 @@ export default function SignalTopTab() {
             {/* Sort/Filter controls */}
             <div className={styles.controls}>
                 <div className={styles.sortGroup}>
-                    {(["score", "facility", "compensation"] as SortKey[]).map((key) => (
+                    {(["score", "price_ratio", "facility_age", "gosi_stage", "facility", "compensation"] as SortKey[]).map((key) => (
                         <button
                             key={key}
                             className={`${styles.sortBtn} ${sortBy === key ? styles.sortBtnActive : ""}`}
                             onClick={() => setSortBy(key)}
                         >
-                            {key === "score" ? "점수순" : key === "facility" ? "시설순" : "보상순"}
+                            {key === "score" ? "점수순" : key === "facility" ? "시설순" : key === "compensation" ? "보상순" : key === "price_ratio" ? "공시지가비율" : key === "facility_age" ? "경과연수" : "사업단계"}
                         </button>
                     ))}
                 </div>
+                <button
+                    className={`${styles.filterBtn} ${excludeHousing ? styles.filterBtnActive : ""}`}
+                    onClick={() => setExcludeHousing(!excludeHousing)}
+                >
+                    <Building2 size={13} />
+                    주택 제외
+                </button>
                 <button
                     className={`${styles.filterBtn} ${filterCompensation ? styles.filterBtnActive : ""}`}
                     onClick={() => setFilterCompensation(!filterCompensation)}
@@ -238,7 +278,7 @@ export default function SignalTopTab() {
                                     className={styles.scoreBadge}
                                     style={{ background: getScoreColor(item.score) }}
                                 >
-                                    {item.score}
+                                    {formatScore(item.score)}
                                 </div>
 
                                 <div className={styles.cardInfo}>
@@ -370,6 +410,48 @@ export default function SignalTopTab() {
                                     {item.permit_count > 0 && <span className={styles.breakdownItem}>인허가 {item.permit_count}</span>}
                                     {item.signal_count > 0 && <span className={styles.breakdownItem}>회의록 {item.signal_count}</span>}
                                 </div>
+
+                                {/* New data columns */}
+                                <div className={styles.scoreBreakdown}>
+                                    {auc["최저가/공시지가비율"] && (
+                                        <span className={styles.breakdownItem}>
+                                            공시지가비율 {Number(auc["최저가/공시지가비율"]).toFixed(2)}
+                                        </span>
+                                    )}
+                                    {auc["시설경과연수"] && (
+                                        <span className={styles.breakdownItem}>
+                                            경과 {auc["시설경과연수"]}년
+                                        </span>
+                                    )}
+                                    {(item.gosi_stage ?? 0) > 0 && (
+                                        <span
+                                            className={styles.breakdownItem}
+                                            style={{ color: GOSI_STAGE_COLORS[item.gosi_stage || 0] }}
+                                        >
+                                            {GOSI_STAGE_LABELS[item.gosi_stage || 0]}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Score breakdown bar */}
+                                {item.score_breakdown && (
+                                    <div style={{ display: "flex", gap: "2px", height: "6px", borderRadius: "3px", overflow: "hidden", margin: "4px 0" }}>
+                                        {Object.entries(item.score_breakdown).map(([key, val]) => (
+                                            <div
+                                                key={key}
+                                                style={{
+                                                    flex: val.weighted > 0 ? val.weighted : 0.001,
+                                                    background: key === "gosi_stage" ? "#dc2626" :
+                                                        key === "price_attractiveness" ? "#ea580c" :
+                                                        key === "facility_coverage" ? "#2563eb" :
+                                                        key === "facility_age" ? "#7c3aed" : "#059669",
+                                                    opacity: val.weighted > 0 ? 1 : 0.15,
+                                                }}
+                                                title={`${key}: ${(val.raw * 100).toFixed(0)}% (가중: ${(val.weighted * 100).toFixed(1)}%)`}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
 
                                 {/* Notice details */}
                                 {item.notice_details && item.notice_details.length > 0 && (

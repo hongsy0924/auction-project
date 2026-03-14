@@ -50,6 +50,7 @@ ENTRYPOINT [ "/app/docker-entrypoint.js" ]
 
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
-ENV DATABASE_URL="file:///data/sqlite.db"
+ENV DATABASE_PATH="/data/auction_data.db"
+ENV MINUTES_CACHE_PATH="/data/minutes_cache.db"
 ENV HOSTNAME="0.0.0.0"
 CMD [ "yarn", "run", "start" ]

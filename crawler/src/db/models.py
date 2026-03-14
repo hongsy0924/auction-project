@@ -174,6 +174,16 @@ class AuctionRaw(Base):
     land_use_3 = Column(Text)
     land_use_combined = Column(Text)
 
+    # 공시지가 정보 (개별공시지가 API 조회 결과)
+    land_price_per_sqm = Column(Text)       # 공시지가 원/㎡
+    land_price_year = Column(Text)          # 기준연도
+    land_price_total = Column(Text)         # 공시지가 × 면적
+    min_to_official_ratio = Column(Text)    # 최저가/공시지가총액
+
+    # 시설 경과연수
+    facility_regist_dt = Column(Text)       # registDt from VWorld
+    facility_age_years = Column(Text)       # 시설결정 후 경과연수
+
     def __repr__(self) -> str:
         return f"<AuctionRaw(docid={self.docid!r}, srnSaNo={self.srnSaNo!r})>"
 
@@ -215,6 +225,10 @@ class AuctionCleaned(Base):
     PNU = Column("PNU", Text)
     경도 = Column("경도", Text)
     위도 = Column("위도", Text)
+    공시지가 = Column("공시지가(원/㎡)", Text)
+    공시지가총액 = Column("공시지가총액", Text)
+    최저가공시지가비율 = Column("최저가/공시지가비율", Text)
+    시설경과연수 = Column("시설경과연수", Text)
 
     def __repr__(self) -> str:
         return f"<AuctionCleaned(사건번호={self.사건번호!r}, 주소={self.주소!r})>"

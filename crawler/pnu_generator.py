@@ -269,6 +269,88 @@ class PNUGenerator:
             logger.error(f"토지이용정보 조회 실패 (PNU: {pnu}, cnflcAt: {cnflcAt}): {e}")
             return {'pnu': pnu, 'cnflcAt': cnflcAt, 'land_use': None, 'error': str(e)}
 
+    @retry_with_backoff()
+    async def get_land_price(self, pnu: str, session: aiohttp.ClientSession, stdr_year: str | None = None) -> dict:
+        """vworld 개별공시지가 API로 공시지가를 조회합니다."""
+        url = "https://api.vworld.kr/ned/data/getIndvdLandPriceAttr"
+        params = {
+            'key': self.api_key,
+            'pnu': pnu,
+            'domain': 'api.vworld.kr',
+            'format': 'json',
+        }
+        if stdr_year:
+            params['stdrYear'] = stdr_year
+        try:
+            async with session.get(url, params=params, ssl=False) as response:
+                response.raise_for_status()
+                data = await response.json()
+                fields = data.get('indvdLandPrices', {}).get('field', [])
+                if fields:
+                    latest = fields[0]  # When stdrYear specified, returns that year's record
+                    return {
+                        'pnu': pnu,
+                        'pblntfPclnd': latest.get('pblntfPclnd'),  # 공시지가 (원/㎡)
+                        'stdrYear': latest.get('stdrYear'),
+                        'stdrMt': latest.get('stdrMt'),
+                        'pblntfDe': latest.get('pblntfDe'),
+                        'stdLandAt': latest.get('stdLandAt'),
+                    }
+                return {'pnu': pnu, 'pblntfPclnd': None}
+        except Exception as e:
+            logger.error(f"공시지가 조회 실패 (PNU: {pnu}): {e}")
+            return {'pnu': pnu, 'pblntfPclnd': None, 'error': str(e)}
+
+    # Urban planning facility zone code prefixes (도시계획시설)
+    # UFA=도로, UFB=공원, UFC=녹지, UFD=광장, UFE=주차장, UFF=철도, etc.
+    _FACILITY_CODE_PREFIXES = ('UF',)
+    # Also match specific names for zones that may use non-UF codes
+    _FACILITY_NAME_KEYWORDS = (
+        '도로', '공원', '녹지', '완충녹지', '광장', '주차장', '철도',
+        '학교', '하천', '유수지', '하수도', '폐기물', '수도', '전기',
+        '가스', '유류', '열공급', '방송', '시장', '묘지', '화장장',
+    )
+
+    @retry_with_backoff()
+    async def get_land_use_detail(self, pnu: str, session: aiohttp.ClientSession) -> dict:
+        """vworld 토지이용정보 상세 조회 — registDt 추출 (도시계획시설 우선)."""
+        params = {
+            'key': self.api_key,
+            'pnu': pnu,
+            'domain': 'api.vworld.kr',
+            'format': 'json',
+            'numOfRows': '50',
+        }
+        try:
+            async with session.get(self.base_url, params=params, ssl=False) as response:
+                response.raise_for_status()
+                data = await response.json()
+                fields = data.get('landUses', {}).get('field', [])
+                # Priority: find registDt from urban planning facility zones first
+                facility_dt = None
+                any_dt = None
+                for item in fields:
+                    dt = item.get('registDt')
+                    if not dt:
+                        continue
+                    if any_dt is None:
+                        any_dt = dt
+                    code = item.get('prposAreaDstrcCode', '')
+                    name = item.get('prposAreaDstrcCodeNm', '')
+                    is_facility = (
+                        any(code.startswith(p) for p in self._FACILITY_CODE_PREFIXES)
+                        or any(kw in name for kw in self._FACILITY_NAME_KEYWORDS)
+                    )
+                    if is_facility:
+                        # Take the oldest facility registDt (most conservative age estimate)
+                        if facility_dt is None or dt < facility_dt:
+                            facility_dt = dt
+                # Prefer facility-specific date; fall back to any date
+                return {'pnu': pnu, 'registDt': facility_dt or any_dt}
+        except Exception as e:
+            logger.error(f"토지이용 상세 조회 실패 (PNU: {pnu}): {e}")
+            return {'pnu': pnu, 'registDt': None, 'error': str(e)}
+
 async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: int, batch_size: int) -> list[dict]:
     """배치 단위로 PNU 생성 및 토지이용정보 조회"""
     end_idx = min(start_idx + batch_size, len(df))

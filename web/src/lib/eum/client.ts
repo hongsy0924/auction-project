@@ -150,6 +150,99 @@ function extractNoticeType(title: string): string {
     return "기타고시";
 }
 
+// ─── Gosi Stage Classification ──────────────────────────────────────
+
+/** Classify a government notice title into a project progression stage (0-4). */
+export function classifyGosiStage(title: string): number {
+    if (!title) return 0;
+    // Stage 4: 보상/수용 확정 단계
+    if (/보상계획|보상협의|수용재결|토지보상|보상공고/.test(title)) return 4;
+    // Stage 3: 사업인정
+    if (/사업인정|사업시행/.test(title)) return 3;
+    // Stage 2: 실시계획
+    if (/실시계획|실시계획인가/.test(title)) return 2;
+    // Stage 1: 결정/지정 단계
+    if (/결정고시|변경고시|지형도면|도시계획결정|지구지정|지구 지정|도시관리계획/.test(title)) return 1;
+    return 0;
+}
+
+/** Keywords that indicate investment-relevant gosi notices. */
+const GOSI_RELEVANCE_KEYWORDS = [
+    "도시계획", "결정고시", "변경고시", "실시계획", "사업인정",
+    "보상계획", "보상협의", "수용재결", "토지보상", "보상공고",
+    "지구지정", "지형도면", "도시관리계획", "택지개발", "산업단지",
+    "정비사업", "재개발", "재건축", "도로", "공원",
+];
+
+/** Filter notices that are relevant to urban planning / compensation. */
+export function filterRelevantGosi(notices: CachedEumNotice[]): CachedEumNotice[] {
+    return notices.filter((n) =>
+        GOSI_RELEVANCE_KEYWORDS.some((kw) => n.title?.includes(kw))
+    );
+}
+
+/** Match notices to a specific dong name via title/summary text matching. */
+export function matchGosiToDong(
+    notices: CachedEumNotice[],
+    dongName: string,
+): { notice: CachedEumNotice; gosiStage: number; matchType: "title" | "address" }[] {
+    if (!dongName) return [];
+    const matches: { notice: CachedEumNotice; gosiStage: number; matchType: "title" | "address" }[] = [];
+    for (const n of notices) {
+        const stage = classifyGosiStage(n.title);
+        if (n.title?.includes(dongName)) {
+            matches.push({ notice: n, gosiStage: stage, matchType: "title" });
+        } else if (n.relatedAddress?.includes(dongName)) {
+            matches.push({ notice: n, gosiStage: stage, matchType: "address" });
+        }
+    }
+    return matches;
+}
+
+// ─── Hot Zone Extraction ────────────────────────────────────────────
+
+export interface HotZone {
+    areaCd: string;
+    dongNames: string[];
+    gosiTitle: string;
+    gosiStage: number;
+    ntcDate: string;
+}
+
+/** Extract "hot zones" from stage 3-4 notices (areas with active compensation). */
+export function extractHotZones(notices: CachedEumNotice[]): HotZone[] {
+    const hotZones: HotZone[] = [];
+    for (const n of notices) {
+        const stage = classifyGosiStage(n.title);
+        if (stage < 3) continue;
+
+        // Extract dong names from title and summary
+        const dongNames = new Set<string>();
+        const dongPattern = /([가-힣]+[동리읍면])\b/g;
+        let match: RegExpExecArray | null;
+
+        const searchText = `${n.title || ""} ${n.relatedAddress || ""}`;
+        while ((match = dongPattern.exec(searchText)) !== null) {
+            const name = match[1];
+            // Filter out common false positives
+            if (!["변경고시동", "사업인정동", "보상계획동"].includes(name)) {
+                dongNames.add(name);
+            }
+        }
+
+        if (dongNames.size > 0) {
+            hotZones.push({
+                areaCd: n.areaCd,
+                dongNames: [...dongNames],
+                gosiTitle: n.title,
+                gosiStage: stage,
+                ntcDate: n.noticeDate,
+            });
+        }
+    }
+    return hotZones;
+}
+
 // ─── 3.8 개발 인허가 목록 조회 (Dev Permits) ─────────────────────────
 
 export interface EumDevPermit {
