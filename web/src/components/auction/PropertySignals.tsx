@@ -261,6 +261,63 @@ export default function PropertySignals({ row }: { row: AuctionItem }) {
                     </div>
                 )}
 
+                {/* Layer 3.5: 가격 분석 */}
+                {(row["감정평가액"] || row["최저매각가격"] || row["공시지가(원/㎡)"]) && (
+                    <div className={styles.section}>
+                        <div className={styles.sectionLabel}>가격 분석</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", fontSize: "13px" }}>
+                            {row["감정평가액"] && (
+                                <div>
+                                    <span style={{ color: "var(--text-muted)" }}>감정가: </span>
+                                    <span style={{ fontWeight: 600 }}>{Number(row["감정평가액"]).toLocaleString()}원</span>
+                                </div>
+                            )}
+                            {row["최저매각가격"] && (
+                                <div>
+                                    <span style={{ color: "var(--text-muted)" }}>최저가: </span>
+                                    <span style={{ fontWeight: 600 }}>{Number(row["최저매각가격"]).toLocaleString()}원</span>
+                                </div>
+                            )}
+                            {row["공시지가(원/㎡)"] && (
+                                <div>
+                                    <span style={{ color: "var(--text-muted)" }}>공시지가: </span>
+                                    <span style={{ fontWeight: 600 }}>{Number(row["공시지가(원/㎡)"]).toLocaleString()}원/㎡</span>
+                                </div>
+                            )}
+                            {row["공시지가총액"] && (
+                                <div>
+                                    <span style={{ color: "var(--text-muted)" }}>공시지가총액: </span>
+                                    <span style={{ fontWeight: 600 }}>{Number(row["공시지가총액"]).toLocaleString()}원</span>
+                                </div>
+                            )}
+                            {row["최저가/공시지가비율"] && (
+                                <div style={{ gridColumn: "span 2" }}>
+                                    <span style={{ color: "var(--text-muted)" }}>최저가/공시지가 비율: </span>
+                                    <span style={{
+                                        fontWeight: 700,
+                                        color: Number(row["최저가/공시지가비율"]) <= 0.7 ? "#dc2626" :
+                                            Number(row["최저가/공시지가비율"]) <= 0.9 ? "#ea580c" : "var(--text-main)"
+                                    }}>
+                                        {(Number(row["최저가/공시지가비율"]) * 100).toFixed(1)}%
+                                    </span>
+                                </div>
+                            )}
+                            {row["시설경과연수"] && (
+                                <div style={{ gridColumn: "span 2" }}>
+                                    <span style={{ color: "var(--text-muted)" }}>시설결정 경과: </span>
+                                    <span style={{
+                                        fontWeight: 700,
+                                        color: Number(row["시설경과연수"]) >= 15 ? "#dc2626" :
+                                            Number(row["시설경과연수"]) >= 10 ? "#ea580c" : "var(--text-main)"
+                                    }}>
+                                        {row["시설경과연수"]}년
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Layer 4: AI 심층 분석 */}
                 <div className={styles.section}>
                     <div className={styles.sectionLabel}>AI 심층 분석</div>

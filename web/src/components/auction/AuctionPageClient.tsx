@@ -27,6 +27,7 @@ export default function AuctionPageClient() {
     const [loading, setLoading] = useState(true);
     const [appliedKeyword, setAppliedKeyword] = useState("");
     const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+    const [hotZoneAlerts, setHotZoneAlerts] = useState<{ zone_title: string; matched_doc_ids: string; zone_stage: number }[]>([]);
 
     useEffect(() => {
         setLoading(true);
@@ -44,6 +45,19 @@ export default function AuctionPageClient() {
             })
             .catch(() => setLoading(false));
     }, [page, perPage, appliedKeyword]);
+
+    useEffect(() => {
+        if (activeTab === "signal-top") {
+            fetch("/api/signal-top?page=1&per_page=1")
+                .then((res) => res.json())
+                .then((data) => {
+                    if (data.hotZoneAlerts?.length > 0) {
+                        setHotZoneAlerts(data.hotZoneAlerts);
+                    }
+                })
+                .catch(() => {});
+        }
+    }, [activeTab]);
 
     // 데이터에서 실제 존재하는 컬럼만 필터링
     const columns = useMemo(() => {
@@ -167,6 +181,25 @@ export default function AuctionPageClient() {
                         </div>
                     )}
                 </main>
+            )}
+            {activeTab === "signal-top" && hotZoneAlerts.length > 0 && (
+                <div style={{
+                    padding: "12px 20px",
+                    background: "#dc262610",
+                    border: "1px solid #dc262630",
+                    borderRadius: "var(--radius-md)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "14px",
+                    color: "#dc2626",
+                    fontWeight: 600,
+                }}>
+                    <span style={{ fontSize: "16px" }}>!</span>
+                    <span>
+                        보상 확정 지역에 경매 물건 {hotZoneAlerts.reduce((sum, a) => sum + (JSON.parse(a.matched_doc_ids || "[]")).length, 0)}건 발견
+                    </span>
+                </div>
             )}
             {activeTab === "signal-top" && <SignalTopTab />}
             {activeTab === "minutes" && <MinutesSearchPage embedded />}

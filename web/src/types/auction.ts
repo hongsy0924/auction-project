@@ -31,6 +31,10 @@ export interface AuctionItem {
     PNU?: string;
     경도?: string;
     위도?: string;
+    "공시지가(원/㎡)"?: string | number;
+    공시지가총액?: string | number;
+    "최저가/공시지가비율"?: string | number;
+    시설경과연수?: string | number;
     [key: string]: string | number | undefined;
 }
 
@@ -54,10 +58,13 @@ export const VISIBLE_COLUMNS = [
     "포함",
     "저촉",
     "접합",
+    "공시지가(원/㎡)",
+    "최저가/공시지가비율",
+    "시설경과연수",
 ] as const;
 
 /** 숫자 포맷팅 대상 컬럼 */
-export const NUMBER_COLUMNS = ["감정평가액", "최저매각가격"] as const;
+export const NUMBER_COLUMNS = ["감정평가액", "최저매각가격", "공시지가(원/㎡)", "공시지가총액"] as const;
 
 /** Sticky(고정) 컬럼 목록 (순서 중요) */
 export const FROZEN_COLUMNS = [

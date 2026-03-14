@@ -9,8 +9,10 @@ import asyncio
 import datetime
 import logging
 import os
+import re
 from typing import Any, cast
 
+import aiohttp
 import pandas as pd
 from tqdm import tqdm
 
@@ -90,6 +92,124 @@ async def enrich_with_land_use(
     return enriched_df, failed_cases
 
 
+async def enrich_with_land_price(
+    df: pd.DataFrame,
+    batch_size: int,
+    request_delay: float,
+) -> pd.DataFrame:
+    """
+    VWorld 개별공시지가 API를 통해 공시지가 및 시설경과연수를 조회하여 데이터를 보강합니다.
+    """
+    from datetime import datetime
+
+    from pnu_generator import PNUGenerator
+
+    generator = PNUGenerator()
+
+    # Parse area from areaList (e.g. "123.45㎡" → 123.45)
+    def parse_area(area_str: str | None) -> float | None:
+        if not area_str:
+            return None
+        # Match first number (possibly decimal)
+        m = re.search(r'([\d,]+\.?\d*)', str(area_str))
+        if m:
+            return float(m.group(1).replace(',', ''))
+        return None
+
+    results = []
+    total = len(df)
+    current_year = str(datetime.now().year)
+
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+        for idx in tqdm(range(total), desc="공시지가 조회 중"):
+            row = df.iloc[idx]
+            pnu = str(row.get('pnu', ''))
+            result = row.to_dict()
+
+            if not pnu or pnu == 'nan':
+                result['land_price_per_sqm'] = None
+                result['land_price_year'] = None
+                result['land_price_total'] = None
+                result['min_to_official_ratio'] = None
+                result['facility_regist_dt'] = None
+                result['facility_age_years'] = None
+                results.append(result)
+                continue
+
+            try:
+                # Get land price (pass current year to get latest, fallback to previous year)
+                price_data = await generator.get_land_price(pnu, session, stdr_year=current_year)
+                if not price_data.get('pblntfPclnd'):
+                    price_data = await generator.get_land_price(pnu, session, stdr_year=str(int(current_year) - 1))
+                price_per_sqm = price_data.get('pblntfPclnd')
+                price_year = price_data.get('stdrYear')
+
+                if price_per_sqm:
+                    price_per_sqm = int(price_per_sqm)
+                    area_sqm = parse_area(str(row.get('areaList', '')))
+                    if area_sqm and area_sqm > 0:
+                        price_total = int(price_per_sqm * area_sqm)
+                        min_price = row.get('minmaePrice') or row.get('notifyMinmaePrice1')
+                        if min_price:
+                            try:
+                                min_val = int(str(min_price).replace(',', ''))
+                                ratio = round(min_val / price_total, 4) if price_total > 0 else None
+                            except (ValueError, ZeroDivisionError):
+                                ratio = None
+                        else:
+                            ratio = None
+                    else:
+                        price_total = None
+                        ratio = None
+                else:
+                    price_per_sqm = None
+                    price_total = None
+                    ratio = None
+
+                result['land_price_per_sqm'] = price_per_sqm
+                result['land_price_year'] = price_year
+                result['land_price_total'] = price_total
+                result['min_to_official_ratio'] = ratio
+
+                # Get facility age (registDt) — only if property has land use data (urban facility overlap)
+                land_use = str(row.get('land_use_combined', ''))
+                if land_use and land_use != 'nan':
+                    detail = await generator.get_land_use_detail(pnu, session)
+                    regist_dt = detail.get('registDt')
+                    if regist_dt:
+                        result['facility_regist_dt'] = regist_dt
+                        try:
+                            # registDt format: YYYYMMDD or YYYY-MM-DD
+                            dt_clean = regist_dt.replace('-', '')
+                            dt_obj = datetime.strptime(dt_clean[:8], '%Y%m%d')
+                            age = (datetime.now() - dt_obj).days / 365.25
+                            result['facility_age_years'] = round(age, 1)
+                        except (ValueError, TypeError):
+                            result['facility_age_years'] = None
+                    else:
+                        result['facility_regist_dt'] = None
+                        result['facility_age_years'] = None
+                else:
+                    result['facility_regist_dt'] = None
+                    result['facility_age_years'] = None
+
+            except Exception as e:
+                logger.error(f"공시지가 보강 실패 (PNU: {pnu}): {e}")
+                result['land_price_per_sqm'] = None
+                result['land_price_year'] = None
+                result['land_price_total'] = None
+                result['min_to_official_ratio'] = None
+                result['facility_regist_dt'] = None
+                result['facility_age_years'] = None
+
+            results.append(result)
+
+            if idx % batch_size == 0 and idx > 0:
+                await asyncio.sleep(request_delay)
+
+    return pd.DataFrame(results)
+
+
 async def save_auction_data(data: list[dict[str, Any]]) -> None:
     """
     경매 데이터를 Excel 파일과 SQLite DB에 저장합니다.
@@ -126,6 +246,15 @@ async def save_auction_data(data: list[dict[str, Any]]) -> None:
                 )
                 failed_df.to_excel(failed_file, index=False)
                 logger.warning(f"실패 케이스 {len(failed_cases)}건 저장 완료: {failed_file}")
+
+            # 공시지가 보강
+            logger.info("공시지가 조회 시작...")
+            result_df = await enrich_with_land_price(
+                result_df,
+                batch_size=settings.crawling.batch_size,
+                request_delay=settings.crawling.request_delay,
+            )
+            logger.info("공시지가 조회 완료")
 
         # Excel 저장
         output_file = os.path.join(

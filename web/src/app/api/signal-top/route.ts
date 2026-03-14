@@ -3,14 +3,23 @@ import {
     getPropertyScores,
     getPropertyScoreCount,
     getPropertyAnalysisBatch,
+    getHotZoneAlerts,
+    type ScoreSortKey,
+    type ScoreQueryOptions,
 } from "@/lib/minutes/cache";
 
 export const dynamic = "force-dynamic";
+
+const VALID_SORTS = new Set<ScoreSortKey>(["score", "price_ratio", "facility_age", "gosi_stage", "facility", "compensation"]);
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const perPage = Math.min(100, Math.max(1, parseInt(searchParams.get("per_page") || "20", 10)));
+    const sortParam = searchParams.get("sort") || "score";
+    const sort: ScoreSortKey = VALID_SORTS.has(sortParam as ScoreSortKey) ? (sortParam as ScoreSortKey) : "score";
+    const filterCompensation = searchParams.get("filter_compensation") === "1";
+    const excludeHousing = searchParams.get("exclude_housing") === "1";
 
     // Cap total results at 100 (top scores only)
     const MAX_RESULTS = 100;
@@ -21,11 +30,12 @@ export async function GET(request: NextRequest) {
     }
 
     const adjustedLimit = Math.min(perPage, MAX_RESULTS - offset);
+    const queryOpts: ScoreQueryOptions = { limit: adjustedLimit, offset, sort, filterCompensation, excludeHousing };
 
     try {
         const [items, rawTotal] = await Promise.all([
-            getPropertyScores(adjustedLimit, offset),
-            getPropertyScoreCount(),
+            getPropertyScores(queryOpts),
+            getPropertyScoreCount(queryOpts),
         ]);
 
         const total = Math.min(rawTotal, MAX_RESULTS);
@@ -45,7 +55,13 @@ export async function GET(request: NextRequest) {
             has_analysis: analysisMap.has(item.doc_id),
         }));
 
-        return Response.json({ data, total, page, perPage });
+        // Fetch hot zone alerts
+        let hotZoneAlerts: import("@/lib/minutes/cache").CachedHotZoneAlert[] = [];
+        try {
+            hotZoneAlerts = await getHotZoneAlerts();
+        } catch { /* non-critical */ }
+
+        return Response.json({ data, total, page, perPage, hotZoneAlerts });
     } catch (err) {
         console.error("[signal-top] Error:", err);
         return Response.json({ error: "Failed to fetch signal scores" }, { status: 500 });

@@ -150,6 +150,28 @@ async function ensureInitialized(): Promise<void> {
         analyzed_at INTEGER NOT NULL
     )`);
 
+    await runAsync(`CREATE TABLE IF NOT EXISTS gosi_match_cache (
+        doc_id TEXT NOT NULL,
+        gosi_title TEXT NOT NULL,
+        gosi_stage INTEGER NOT NULL DEFAULT 0,
+        ntc_date TEXT,
+        match_type TEXT,
+        area_cd TEXT,
+        last_updated INTEGER NOT NULL,
+        PRIMARY KEY (doc_id, gosi_title)
+    )`);
+
+    await runAsync(`CREATE TABLE IF NOT EXISTS hot_zone_alerts (
+        alert_id TEXT PRIMARY KEY,
+        zone_title TEXT NOT NULL,
+        zone_stage INTEGER NOT NULL DEFAULT 0,
+        zone_area_cd TEXT,
+        zone_dong_names TEXT,
+        matched_doc_ids TEXT,
+        created_at INTEGER NOT NULL,
+        reviewed INTEGER DEFAULT 0
+    )`);
+
     initialized = true;
 }
 
@@ -484,19 +506,75 @@ export interface PropertyScore {
     scored_at: number;
 }
 
-export async function getPropertyScores(limit = 20, offset = 0): Promise<PropertyScore[]> {
-    await ensureInitialized();
-    return allAsync<PropertyScore>(
-        "SELECT * FROM property_scores ORDER BY score DESC LIMIT ? OFFSET ?",
-        [limit, offset]
-    );
+export type ScoreSortKey = "score" | "price_ratio" | "facility_age" | "gosi_stage" | "facility" | "compensation";
+
+export interface ScoreQueryOptions {
+    limit?: number;
+    offset?: number;
+    sort?: ScoreSortKey;
+    filterCompensation?: boolean;
+    excludeHousing?: boolean;
 }
 
-export async function getPropertyScoreCount(): Promise<number> {
+function buildScoreQuery(opts: ScoreQueryOptions, countOnly: boolean): { sql: string; params: unknown[] } {
+    const where: string[] = [];
+    const params: unknown[] = [];
+
+    if (opts.filterCompensation) {
+        where.push("(has_compensation = 1 OR has_unexecuted = 1)");
+    }
+
+    if (opts.excludeHousing) {
+        // Exclude all residential/building types — keep only land-oriented items
+        where.push(`json_extract(auction_data, '$.물건종류') NOT IN ('다세대', '아파트', '오피스텔', '빌라')
+            AND json_extract(auction_data, '$.물건종류') NOT LIKE '%주택%'`);
+    }
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+
+    if (countOnly) {
+        return { sql: `SELECT COUNT(*) as cnt FROM property_scores ${whereClause}`, params };
+    }
+
+    // auction_data is JSON text — use json_extract for embedded fields
+    let orderBy: string;
+    switch (opts.sort) {
+        case "price_ratio":
+            orderBy = "CAST(json_extract(auction_data, '$.\"최저가/공시지가비율\"') AS REAL) ASC, score DESC";
+            break;
+        case "facility_age":
+            orderBy = "CAST(json_extract(auction_data, '$.시설경과연수') AS REAL) DESC, score DESC";
+            break;
+        case "gosi_stage":
+            orderBy = "CAST(json_extract(auction_data, '$.gosi_stage') AS INTEGER) DESC, score DESC";
+            break;
+        case "facility":
+            orderBy = "facility_count DESC, score DESC";
+            break;
+        case "compensation":
+            orderBy = "(has_compensation + has_unexecuted) DESC, score DESC";
+            break;
+        default:
+            orderBy = "score DESC";
+    }
+
+    params.push(opts.limit ?? 20, opts.offset ?? 0);
+    return {
+        sql: `SELECT * FROM property_scores ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+        params,
+    };
+}
+
+export async function getPropertyScores(opts: ScoreQueryOptions = {}): Promise<PropertyScore[]> {
     await ensureInitialized();
-    const row = await getAsync<{ cnt: number }>(
-        "SELECT COUNT(*) as cnt FROM property_scores"
-    );
+    const { sql, params } = buildScoreQuery(opts, false);
+    return allAsync<PropertyScore>(sql, params);
+}
+
+export async function getPropertyScoreCount(opts: ScoreQueryOptions = {}): Promise<number> {
+    await ensureInitialized();
+    const { sql, params } = buildScoreQuery(opts, true);
+    const row = await getAsync<{ cnt: number }>(sql, params);
     return row?.cnt || 0;
 }
 
@@ -597,4 +675,100 @@ export async function cleanExpiredCache(): Promise<void> {
     await runAsync("DELETE FROM eum_notices WHERE ? - last_updated > ?", [now, EUM_TTL]);
     await runAsync("DELETE FROM eum_permits WHERE ? - last_updated > ?", [now, EUM_TTL]);
     await runAsync("DELETE FROM eum_restrictions WHERE ? - last_updated > ?", [now, EUM_RESTRICTION_TTL]);
+}
+
+const GOSI_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// --- Gosi Match Cache ---
+
+export interface CachedGosiMatch {
+    doc_id: string;
+    gosi_title: string;
+    gosi_stage: number;
+    ntc_date: string;
+    match_type: string;
+    area_cd: string;
+    last_updated: number;
+}
+
+export async function getCachedGosiMatches(docId: string): Promise<CachedGosiMatch[]> {
+    await ensureInitialized();
+    const now = Date.now();
+    return allAsync<CachedGosiMatch>(
+        `SELECT * FROM gosi_match_cache WHERE doc_id = ? AND ? - last_updated <= ?`,
+        [docId, now, GOSI_TTL]
+    );
+}
+
+export async function setCachedGosiMatches(matches: CachedGosiMatch[]): Promise<void> {
+    await ensureInitialized();
+    if (matches.length === 0) return;
+    const d = getDb();
+    return new Promise((resolve, reject) => {
+        d.serialize(() => {
+            d.run("BEGIN TRANSACTION");
+            const stmt = d.prepare(
+                `INSERT OR REPLACE INTO gosi_match_cache
+                 (doc_id, gosi_title, gosi_stage, ntc_date, match_type, area_cd, last_updated)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`
+            );
+            for (const m of matches) {
+                stmt.run(m.doc_id, m.gosi_title, m.gosi_stage, m.ntc_date, m.match_type, m.area_cd, m.last_updated);
+            }
+            stmt.finalize();
+            d.run("COMMIT", (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+    });
+}
+
+// --- Hot Zone Alerts ---
+
+export interface CachedHotZoneAlert {
+    alert_id: string;
+    zone_title: string;
+    zone_stage: number;
+    zone_area_cd: string;
+    zone_dong_names: string;
+    matched_doc_ids: string;
+    created_at: number;
+    reviewed: number;
+}
+
+export async function getHotZoneAlerts(): Promise<CachedHotZoneAlert[]> {
+    await ensureInitialized();
+    return allAsync<CachedHotZoneAlert>(
+        `SELECT * FROM hot_zone_alerts WHERE reviewed = 0 ORDER BY created_at DESC LIMIT 50`
+    );
+}
+
+export async function setHotZoneAlerts(alerts: CachedHotZoneAlert[]): Promise<void> {
+    await ensureInitialized();
+    if (alerts.length === 0) return;
+    const d = getDb();
+    return new Promise((resolve, reject) => {
+        d.serialize(() => {
+            d.run("BEGIN TRANSACTION");
+            const stmt = d.prepare(
+                `INSERT OR REPLACE INTO hot_zone_alerts
+                 (alert_id, zone_title, zone_stage, zone_area_cd, zone_dong_names, matched_doc_ids, created_at, reviewed)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            );
+            for (const a of alerts) {
+                stmt.run(a.alert_id, a.zone_title, a.zone_stage, a.zone_area_cd, a.zone_dong_names, a.matched_doc_ids, a.created_at, a.reviewed);
+            }
+            stmt.finalize();
+            d.run("COMMIT", (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+    });
+}
+
+export async function markHotZoneReviewed(alertId: string): Promise<void> {
+    await ensureInitialized();
+    await runAsync("UPDATE hot_zone_alerts SET reviewed = 1 WHERE alert_id = ?", [alertId]);
 }
