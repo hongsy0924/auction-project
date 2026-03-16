@@ -14,15 +14,23 @@
 # =============================================================================
 set -euo pipefail
 
-# --- 경로 설정 ---
-APP_DIR="/home/opc/auction-project"
+# --- 경로 설정 (자동 감지: opc 또는 crawler 유저) ---
+if [ -d "/home/crawler/auction-project" ]; then
+    DEPLOY_USER="crawler"
+elif [ -d "/home/opc/auction-project" ]; then
+    DEPLOY_USER="opc"
+else
+    DEPLOY_USER="${DEPLOY_USER:-$(whoami)}"
+fi
+
+APP_DIR="/home/$DEPLOY_USER/auction-project"
 CRAWLER_DIR="$APP_DIR/crawler"
 VENV="$CRAWLER_DIR/.venv/bin/activate"
 OUTPUT_DB="$CRAWLER_DIR/output/auction_data.db"
 LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
 
 # Fly.io CLI 경로
-export FLYCTL_INSTALL="/home/opc/.fly"
+export FLYCTL_INSTALL="/home/$DEPLOY_USER/.fly"
 export PATH="$FLYCTL_INSTALL/bin:$PATH"
 
 # --- 환경 변수 로드 ---

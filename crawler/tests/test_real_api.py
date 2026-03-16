@@ -7,7 +7,7 @@ import asyncio
 import aiohttp
 import pytest
 
-from config import API_CONFIG
+from src.settings import get_settings
 from pnu_generator import PNUGenerator
 
 
@@ -21,8 +21,8 @@ async def test_real_api():
 
     # API 설정 확인
     print("\n1. API 설정 확인:")
-    print(f"   - API URL: {API_CONFIG['vworld_url']}")
-    print(f"   - API Key: {API_CONFIG['vworld_api_key'][:10]}...")
+    print(f"   - API URL: {get_settings().api.vworld_url}")
+    print(f"   - API Key: {get_settings().api.vworld_api_key[:10]}...")
 
     # PNU 생성 테스트
     print("\n2. PNU 생성 테스트:")
@@ -43,7 +43,7 @@ async def test_real_api():
             # 실제 API 호출 테스트
             print(f"\n3. 실제 API 호출 테스트 (PNU: {pnus[0]}):")
             try:
-                async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+                async with aiohttp.ClientSession(connector=aiohttp.TCPConnector()) as session:
                     # cnflcAt 없이 호출
                     result1 = await generator.get_land_use_info(pnus[0], session)
                     print("   - cnflcAt=None 결과:")

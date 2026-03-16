@@ -184,21 +184,39 @@ export default function AuctionPageClient() {
             )}
             {activeTab === "signal-top" && hotZoneAlerts.length > 0 && (
                 <div style={{
-                    padding: "12px 20px",
+                    padding: "14px 20px",
                     background: "#dc262610",
                     border: "1px solid #dc262630",
                     borderRadius: "var(--radius-md)",
                     display: "flex",
-                    alignItems: "center",
+                    flexDirection: "column",
                     gap: "8px",
-                    fontSize: "14px",
-                    color: "#dc2626",
-                    fontWeight: 600,
                 }}>
-                    <span style={{ fontSize: "16px" }}>!</span>
-                    <span>
-                        보상 확정 지역에 경매 물건 {hotZoneAlerts.reduce((sum, a) => sum + (JSON.parse(a.matched_doc_ids || "[]")).length, 0)}건 발견
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", color: "#dc2626", fontWeight: 700 }}>
+                        <span style={{ fontSize: "16px" }}>!</span>
+                        <span>
+                            보상 확정 지역에 경매 물건 {hotZoneAlerts.reduce((sum, a) => sum + (JSON.parse(a.matched_doc_ids || "[]")).length, 0)}건 발견
+                        </span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", paddingLeft: "24px" }}>
+                        {hotZoneAlerts.slice(0, 5).map((alert, i) => (
+                            <span key={i} style={{
+                                fontSize: "12px",
+                                padding: "2px 10px",
+                                borderRadius: "12px",
+                                background: alert.zone_stage >= 4 ? "#dc262620" : "#ea580c20",
+                                color: alert.zone_stage >= 4 ? "#dc2626" : "#ea580c",
+                                fontWeight: 600,
+                            }}>
+                                {alert.zone_title.length > 40 ? alert.zone_title.slice(0, 40) + "..." : alert.zone_title}
+                            </span>
+                        ))}
+                        {hotZoneAlerts.length > 5 && (
+                            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                                외 {hotZoneAlerts.length - 5}건
+                            </span>
+                        )}
+                    </div>
                 </div>
             )}
             {activeTab === "signal-top" && <SignalTopTab />}

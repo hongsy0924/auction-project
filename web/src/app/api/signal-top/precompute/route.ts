@@ -6,6 +6,7 @@ import {
     setRegionSignals,
     setPropertyScore,
     clearPropertyScores,
+    clearUpstreamCaches,
     getPropertyScores,
     type RegionSignal,
 } from "@/lib/minutes/cache";
@@ -20,7 +21,7 @@ import {
     extractHotZones,
 } from "@/lib/eum/client";
 import type { CachedEumNotice, CachedEumPermit, CachedEumRestriction } from "@/lib/minutes/cache";
-import { calculateScore } from "@/lib/scoring/engine";
+import { scoreItem } from "@/lib/scoring/precompute";
 import {
     setCachedGosiMatches,
     setHotZoneAlerts,
@@ -39,10 +40,13 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const forceRefresh = searchParams.get("refresh") === "true";
+
     const batchId = new Date().toISOString().slice(0, 10);
 
     // Respond immediately, process in background
-    processAllItems(batchId).catch((err) => {
+    processAllItems(batchId, forceRefresh).catch((err) => {
         console.error("[Precompute] Fatal error:", err);
     });
 
@@ -150,8 +154,14 @@ async function preIndexEumData(areaCodes: string[]): Promise<Map<string, EumData
 
 // --- Background processing ---
 
-async function processAllItems(batchId: string) {
+async function processAllItems(batchId: string, forceRefresh: boolean = false) {
     console.log(`[Precompute] Starting batch ${batchId}`);
+
+    if (forceRefresh) {
+        console.log(`[Precompute] Refresh mode: clearing upstream caches...`);
+        await clearUpstreamCaches();
+        console.log(`[Precompute] Upstream caches cleared.`);
+    }
 
     const clikApiKey = process.env.CLIK_API_KEY;
     if (!clikApiKey) {
@@ -191,10 +201,10 @@ async function processAllItems(batchId: string) {
     }
     console.log(`[Precompute] Found ${allHotZones.length} hot zones from stage 3-4 gosi`);
 
-    // Clear previous scores
-    console.log(`[Precompute] Clearing previous scores...`);
-    await clearPropertyScores();
-    console.log(`[Precompute] Scores cleared. Starting scoring...`);
+    // NOTE: We do NOT clear scores up front. Instead, we write all new scores
+    // with the current batchId, then delete old scores at the end.
+    // This ensures the UI always has data even if precompute crashes mid-run.
+    console.log(`[Precompute] Starting scoring (batch=${batchId}). Old scores remain until complete.`);
 
     // Score all items
     const signalCache = new Map<string, RegionSignal[]>();
@@ -273,20 +283,8 @@ async function processAllItems(batchId: string) {
                 setCachedGosiMatches(cacheable).catch(() => {});
             }
 
-            // New scoring engine
-            const yuchalCount = parseInt(String(item["유찰회수"] || "0"), 10) || 0;
-            const minToOfficialRatio = parseFloat(String(item["최저가/공시지가비율"] || "0")) || undefined;
-            const facilityAgeYears = parseFloat(String(item["시설경과연수"] || "0")) || undefined;
-
-            const scoreResult = calculateScore({
-                facilityInclude: String(item["포함"] || ""),
-                facilityConflict: String(item["저촉"] || ""),
-                facilityAdjoin: String(item["접합"] || ""),
-                facilityAgeYears,
-                gosiStage: maxGosiStage,
-                minToOfficialRatio,
-                yuchalCount,
-            });
+            // Scoring engine (extracted to lib/scoring/precompute.ts)
+            const scoreResult = scoreItem(item, maxGosiStage);
 
             if (scoreResult.total === 0) continue;
 
@@ -402,6 +400,14 @@ async function processAllItems(batchId: string) {
         } catch (err) {
             console.error("[Precompute] Hot zone reverse matching error:", err);
         }
+    }
+
+    // Atomically swap: delete old scores now that new batch is complete
+    if (scoredCount > 0) {
+        await clearPropertyScores(batchId);
+        console.log(`[Precompute] Old scores cleared. Batch ${batchId} is now live.`);
+    } else {
+        console.warn(`[Precompute] No items scored — keeping old scores as fallback.`);
     }
 
     console.log(

@@ -9,7 +9,7 @@ import json
 import aiohttp
 import pytest
 
-from config import API_CONFIG, CRAWLING_CONFIG
+from src.settings import get_settings
 
 
 @pytest.mark.real_api
@@ -23,8 +23,9 @@ async def test_auction_api_response(page: int = 1):
     today = datetime.datetime.now().strftime('%Y%m%d')
     two_weeks_later = (datetime.datetime.now() + datetime.timedelta(days=14)).strftime('%Y%m%d')
 
+    _s = get_settings()
     data = {
-        "dma_pageInfo": {"pageNo": page, "pageSize": CRAWLING_CONFIG['page_size'], "totalYn": "Y"},
+        "dma_pageInfo": {"pageNo": page, "pageSize": _s.crawling.page_size, "totalYn": "Y"},
         "dma_srchGdsDtlSrchInfo": {
             "bidDvsCd": "000331", "mvprpRletDvsCd": "00031R", "cortAuctnSrchCondCd": "0004601",
             "lclDspslGdsLstUsgCd": "10000", "mclDspslGdsLstUsgCd": "10100", "cortStDvs": "1",
@@ -40,7 +41,7 @@ async def test_auction_api_response(page: int = 1):
         "Accept": "application/json, text/plain, */*",
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "X-Requested-With": "XMLHttpRequest",
-        "Referer": API_CONFIG['base_url']
+        "Referer": _s.api.base_url
     }
 
     try:
@@ -48,16 +49,15 @@ async def test_auction_api_response(page: int = 1):
             # 1. 메인 페이지 방문하여 쿠키 획득
             main_url = "https://www.courtauction.go.kr/pgj/index.on"
             print(f"   - 메인 페이지 방문: {main_url}")
-            async with session.get(main_url, headers=headers, ssl=False) as main_response:
+            async with session.get(main_url, headers=headers) as main_response:
                 print(f"   - 메인 페이지 응답: {main_response.status}")
                 print("   - 쿠키 획득 완료")
 
             # 2. API 호출
             async with session.post(
-                API_CONFIG['api_url'],
+                _s.api.api_url,
                 json=data,
                 headers=headers,
-                ssl=False,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
                 print(f"\n1. HTTP 상태 코드: {response.status}")

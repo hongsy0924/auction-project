@@ -43,8 +43,10 @@ typecheck:
 	cd web && npx tsc --noEmit
 
 test:
-	@echo "Running unit tests (skipping real API calls)..."
+	@echo "Running backend unit tests..."
 	cd crawler && pytest -m "not real_api"
+	@echo "Running frontend unit tests..."
+	cd web && npm test
 
 test-all:
 	@echo "Running ALL tests (including real API calls)..."

@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from bjdong_code import lookup_bjdong_code
-from config import API_CONFIG
+from src.settings import get_settings
 from utils import logger, retry_with_backoff
 
 
@@ -120,8 +120,9 @@ def _clean_lotno(raw: str) -> list[str]:
 
 class PNUGenerator:
     def __init__(self):
-        self.base_url = API_CONFIG['vworld_url']
-        self.api_key = API_CONFIG['vworld_api_key']
+        _settings = get_settings()
+        self.base_url = _settings.api.vworld_url
+        self.api_key = _settings.api.vworld_api_key
 
     def create_pnu(
         self,
@@ -256,7 +257,7 @@ class PNUGenerator:
         if cnflcAt:
             params['cnflcAt'] = cnflcAt
         try:
-            async with session.get(self.base_url, params=params, ssl=False) as response:
+            async with session.get(self.base_url, params=params) as response:
                 response.raise_for_status()
                 data = await response.json()
                 land_uses = [item['prposAreaDstrcCodeNm'] for item in data.get('landUses', {}).get('field', []) if 'prposAreaDstrcCodeNm' in item]
@@ -282,7 +283,7 @@ class PNUGenerator:
         if stdr_year:
             params['stdrYear'] = stdr_year
         try:
-            async with session.get(url, params=params, ssl=False) as response:
+            async with session.get(url, params=params) as response:
                 response.raise_for_status()
                 data = await response.json()
                 fields = data.get('indvdLandPrices', {}).get('field', [])
@@ -322,7 +323,7 @@ class PNUGenerator:
             'numOfRows': '50',
         }
         try:
-            async with session.get(self.base_url, params=params, ssl=False) as response:
+            async with session.get(self.base_url, params=params) as response:
                 response.raise_for_status()
                 data = await response.json()
                 fields = data.get('landUses', {}).get('field', [])
@@ -393,7 +394,7 @@ async def process_batch(generator: PNUGenerator, df: pd.DataFrame, start_idx: in
     cnflc_values = ["1", "2", "3"]
     task_meta: list[dict] = []
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector()) as session:
         for info in task_info:
             if info.get('pnu'):
                 for cval in cnflc_values:

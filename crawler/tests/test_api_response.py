@@ -8,7 +8,7 @@ import json
 import aiohttp
 import pytest
 
-from config import API_CONFIG
+from src.settings import get_settings
 
 
 @pytest.mark.real_api
@@ -23,22 +23,22 @@ async def test_api_response():
     test_pnu = "1162010200106550046"
 
     params = {
-        'key': API_CONFIG['vworld_api_key'],
+        'key': get_settings().api.vworld_api_key,
         'pnu': test_pnu,
         'domain': 'api.vworld.kr',
         'format': 'json'
     }
 
     print("\n1. API 호출 정보:")
-    print(f"   - URL: {API_CONFIG['vworld_url']}")
+    print(f"   - URL: {get_settings().api.vworld_url}")
     print(f"   - PNU: {test_pnu}")
     print(f"   - Params: {params}")
 
     try:
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector()) as session:
             # cnflcAt 없이 호출
             print("\n2. cnflcAt 없이 호출:")
-            async with session.get(API_CONFIG['vworld_url'], params=params, ssl=False) as response:
+            async with session.get(get_settings().api.vworld_url, params=params) as response:
                 print(f"   - Status: {response.status}")
                 data1 = await response.json()
                 print("   - 응답 데이터:")
@@ -47,7 +47,7 @@ async def test_api_response():
             # cnflcAt=1로 호출
             print("\n3. cnflcAt=1로 호출:")
             params_with_cnflc = {**params, 'cnflcAt': '1'}
-            async with session.get(API_CONFIG['vworld_url'], params=params_with_cnflc, ssl=False) as response:
+            async with session.get(get_settings().api.vworld_url, params=params_with_cnflc) as response:
                 print(f"   - Status: {response.status}")
                 data2 = await response.json()
                 print("   - 응답 데이터:")
@@ -56,7 +56,7 @@ async def test_api_response():
             # cnflcAt=2로 호출
             print("\n4. cnflcAt=2로 호출:")
             params_with_cnflc = {**params, 'cnflcAt': '2'}
-            async with session.get(API_CONFIG['vworld_url'], params=params_with_cnflc, ssl=False) as response:
+            async with session.get(get_settings().api.vworld_url, params=params_with_cnflc) as response:
                 print(f"   - Status: {response.status}")
                 data3 = await response.json()
                 print("   - 응답 데이터:")
@@ -65,7 +65,7 @@ async def test_api_response():
             # cnflcAt=3로 호출
             print("\n5. cnflcAt=3로 호출:")
             params_with_cnflc = {**params, 'cnflcAt': '3'}
-            async with session.get(API_CONFIG['vworld_url'], params=params_with_cnflc, ssl=False) as response:
+            async with session.get(get_settings().api.vworld_url, params=params_with_cnflc) as response:
                 print(f"   - Status: {response.status}")
                 data4 = await response.json()
                 print("   - 응답 데이터:")

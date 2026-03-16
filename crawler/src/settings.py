@@ -20,9 +20,12 @@ class ApiSettings:
     api_url: str = "https://www.courtauction.go.kr/pgj/pgjsearch/searchControllerMain.on"
     vworld_url: str = "https://api.vworld.kr/ned/data/getLandUseAttr"
     vworld_api_key: str = ""
+    council_api_url: str = "https://clik.nanet.go.kr/openapi/minutes.do"
+    council_api_key: str = ""
 
     def __post_init__(self) -> None:
         self.vworld_api_key = os.getenv('VWORLD_API_KEY', self.vworld_api_key)
+        self.council_api_key = os.getenv('CLIK_API_KEY', self.council_api_key)
 
 
 @dataclass

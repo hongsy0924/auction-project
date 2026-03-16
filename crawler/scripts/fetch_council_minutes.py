@@ -10,9 +10,9 @@ from typing import Any
 
 import requests
 
-# Add parent directory to path to import config
+# Add parent directory to path to import src.settings
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import COUNCIL_API_CONFIG
+from src.settings import get_settings
 
 # Configure logging
 logging.basicConfig(
@@ -23,9 +23,11 @@ logger = logging.getLogger(__name__)
 
 class CouncilCrawler:
     def __init__(self):
-        self.api_key = COUNCIL_API_CONFIG['api_key']
-        self.base_url = COUNCIL_API_CONFIG['base_url']
-        self.timeout = COUNCIL_API_CONFIG['timeout']
+        _settings = get_settings()
+        self.api_key = _settings.api.council_api_key
+        self.base_url = _settings.api.council_api_url
+        # TODO: timeout was never in config.py — pre-existing bug
+        self.timeout = 30
 
         if not self.api_key:
             logger.warning("No API Key found in configuration. API calls may fail.")

@@ -18,7 +18,7 @@ from typing import Any
 import requests
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import COUNCIL_API_CONFIG
+from src.settings import get_settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,8 +64,9 @@ COUNCILS: dict[str, str] = {
 # 투자 관련 검색 키워드
 SIGNAL_KEYWORDS = ["보상", "편입", "수용", "개발", "착공", "도시계획", "도로", "택지"]
 
-CLIK_BASE_URL = COUNCIL_API_CONFIG["base_url"]
-CLIK_API_KEY = COUNCIL_API_CONFIG["api_key"]
+_council_settings = get_settings().api
+CLIK_BASE_URL = _council_settings.council_api_url
+CLIK_API_KEY = _council_settings.council_api_key
 
 
 def get_auction_regions(db_path: str) -> list[tuple[str, str, str]]:

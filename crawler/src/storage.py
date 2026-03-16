@@ -120,7 +120,7 @@ async def enrich_with_land_price(
     total = len(df)
     current_year = str(datetime.now().year)
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector()) as session:
         for idx in tqdm(range(total), desc="공시지가 조회 중"):
             row = df.iloc[idx]
             pnu = str(row.get('pnu', ''))

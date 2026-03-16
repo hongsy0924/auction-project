@@ -128,7 +128,7 @@ export default function SignalTopTab() {
         total,
         compensationCount: items.filter((i) => i.has_compensation === 1).length,
         unexecutedCount: items.filter((i) => i.has_unexecuted === 1).length,
-        avgScore: items.length > 0 ? Math.round(items.reduce((s, i) => s + i.score, 0) / items.length) : 0,
+        avgScore: items.length > 0 ? items.reduce((s, i) => s + i.score, 0) / items.length : 0,
     }), [items, total]);
 
     // Reset page when sort/filter changes
@@ -224,7 +224,7 @@ export default function SignalTopTab() {
                     <span className={styles.statLabel}>미집행 시설</span>
                 </div>
                 <div className={styles.statItem}>
-                    <span className={styles.statValue}>{stats.avgScore}</span>
+                    <span className={styles.statValue}>{formatScore(stats.avgScore)}</span>
                     <span className={styles.statLabel}>평균 점수</span>
                 </div>
             </div>
@@ -280,6 +280,18 @@ export default function SignalTopTab() {
                                 >
                                     {formatScore(item.score)}
                                 </div>
+                                {(item.gosi_stage ?? 0) > 0 && (
+                                    <div
+                                        className={styles.gosiBadge}
+                                        style={{
+                                            background: `${GOSI_STAGE_COLORS[item.gosi_stage || 0]}15`,
+                                            color: GOSI_STAGE_COLORS[item.gosi_stage || 0],
+                                            borderColor: `${GOSI_STAGE_COLORS[item.gosi_stage || 0]}40`,
+                                        }}
+                                    >
+                                        {GOSI_STAGE_LABELS[item.gosi_stage || 0]}
+                                    </div>
+                                )}
 
                                 <div className={styles.cardInfo}>
                                     <div className={styles.cardAddress}>
@@ -292,21 +304,31 @@ export default function SignalTopTab() {
                                         {auc["면적"] && <span>{String(auc["면적"])}</span>}
                                         {auc["매각기일"] && <span>{String(auc["매각기일"])}</span>}
                                     </div>
-                                    {(auc["감정평가액"] || auc["최저매각가격"]) && (
-                                        <div className={styles.cardPrice}>
-                                            {auc["감정평가액"] && (
-                                                <span>{formatPrice(Number(auc["감정평가액"]))}</span>
-                                            )}
-                                            {auc["최저매각가격"] && (
-                                                <span className={styles.priceArrow}>
-                                                    → {formatPrice(Number(auc["최저매각가격"]))}
-                                                </span>
-                                            )}
-                                            {auc["%"] && (
-                                                <span className={styles.pricePercent}>{String(auc["%"])}</span>
-                                            )}
-                                        </div>
-                                    )}
+                                    <div className={styles.cardPrice}>
+                                        {auc["감정평가액"] && (
+                                            <span>{formatPrice(Number(auc["감정평가액"]))}</span>
+                                        )}
+                                        {auc["최저매각가격"] && (
+                                            <span className={styles.priceArrow}>
+                                                → {formatPrice(Number(auc["최저매각가격"]))}
+                                            </span>
+                                        )}
+                                        {auc["%"] && (
+                                            <span className={styles.pricePercent}>{String(auc["%"])}</span>
+                                        )}
+                                        {auc["최저가/공시지가비율"] && (
+                                            <span
+                                                className={styles.priceRatioBadge}
+                                                style={{
+                                                    color: Number(auc["최저가/공시지가비율"]) <= 0.5 ? "#059669" :
+                                                        Number(auc["최저가/공시지가비율"]) <= 0.7 ? "#ca8a04" :
+                                                        Number(auc["최저가/공시지가비율"]) <= 0.9 ? "#ea580c" : "#dc2626",
+                                                }}
+                                            >
+                                                공시지가 {(Number(auc["최저가/공시지가비율"]) * 100).toFixed(0)}%
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className={styles.expandToggle}>
@@ -411,45 +433,37 @@ export default function SignalTopTab() {
                                     {item.signal_count > 0 && <span className={styles.breakdownItem}>회의록 {item.signal_count}</span>}
                                 </div>
 
-                                {/* New data columns */}
-                                <div className={styles.scoreBreakdown}>
-                                    {auc["최저가/공시지가비율"] && (
-                                        <span className={styles.breakdownItem}>
-                                            공시지가비율 {Number(auc["최저가/공시지가비율"]).toFixed(2)}
-                                        </span>
-                                    )}
-                                    {auc["시설경과연수"] && (
-                                        <span className={styles.breakdownItem}>
-                                            경과 {auc["시설경과연수"]}년
-                                        </span>
-                                    )}
-                                    {(item.gosi_stage ?? 0) > 0 && (
-                                        <span
-                                            className={styles.breakdownItem}
-                                            style={{ color: GOSI_STAGE_COLORS[item.gosi_stage || 0] }}
-                                        >
-                                            {GOSI_STAGE_LABELS[item.gosi_stage || 0]}
-                                        </span>
-                                    )}
-                                </div>
-
-                                {/* Score breakdown bar */}
+                                {/* Score breakdown */}
                                 {item.score_breakdown && (
-                                    <div style={{ display: "flex", gap: "2px", height: "6px", borderRadius: "3px", overflow: "hidden", margin: "4px 0" }}>
-                                        {Object.entries(item.score_breakdown).map(([key, val]) => (
-                                            <div
-                                                key={key}
-                                                style={{
-                                                    flex: val.weighted > 0 ? val.weighted : 0.001,
-                                                    background: key === "gosi_stage" ? "#dc2626" :
-                                                        key === "price_attractiveness" ? "#ea580c" :
-                                                        key === "facility_coverage" ? "#2563eb" :
-                                                        key === "facility_age" ? "#7c3aed" : "#059669",
-                                                    opacity: val.weighted > 0 ? 1 : 0.15,
-                                                }}
-                                                title={`${key}: ${(val.raw * 100).toFixed(0)}% (가중: ${(val.weighted * 100).toFixed(1)}%)`}
-                                            />
-                                        ))}
+                                    <div className={styles.breakdownGrid}>
+                                        {([
+                                            ["facility_coverage", "시설저촉", "#2563eb"],
+                                            ["facility_age", "경과연수", "#7c3aed"],
+                                            ["gosi_stage", "사업단계", "#dc2626"],
+                                            ["price_attractiveness", "가격매력", "#ea580c"],
+                                            ["timing", "유찰", "#059669"],
+                                        ] as [string, string, string][]).map(([key, label, color]) => {
+                                            const comp = item.score_breakdown?.[key];
+                                            if (!comp) return null;
+                                            return (
+                                                <div key={key} className={styles.breakdownColumn}>
+                                                    <div className={styles.breakdownBarTrack}>
+                                                        <div
+                                                            className={styles.breakdownBarFill}
+                                                            style={{
+                                                                width: `${Math.max(comp.raw * 100, 2)}%`,
+                                                                background: color,
+                                                                opacity: comp.raw > 0 ? 1 : 0.15,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <span className={styles.breakdownLabel} style={{ color: comp.raw > 0 ? color : undefined }}>
+                                                        {label}
+                                                        {comp.raw > 0 && <span className={styles.breakdownValue}>{(comp.raw * 100).toFixed(0)}</span>}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 

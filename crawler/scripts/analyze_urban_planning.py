@@ -6,9 +6,9 @@ import re
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import config
+# Add parent directory to path to import src.settings
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import AI_CONFIG
+# TODO: AI_CONFIG never existed in config.py — this script needs a rewrite
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +16,10 @@ class UrbanPlanningAnalyzer:
     def __init__(self):
         self.data_dir = Path(__file__).parent.parent / "data" / "council" / "raw"
         self.gemini_client = None
-        self.model_name = AI_CONFIG.get('model', 'gemini-2.0-flash-exp')
+        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash-exp')
         self.embed_model = "text-embedding-004"
 
-        # If config still has a GPT default, switch to Gemini
-        if 'gpt' in self.model_name.lower():
-             self.model_name = 'gemini-2.0-flash-exp'
-
-        api_key = AI_CONFIG.get('api_key')
+        api_key = os.getenv('GEMINI_API_KEY', '')
         if api_key:
             try:
                 from google import genai

@@ -49,7 +49,7 @@ def clean_auction_db(db_path: str | None = None) -> None:
         col_insert = ", ".join([f'"{v}"' for v in COLUMN_MAPPING.values()])
 
         conn.execute(text(
-            f'INSERT INTO "{new_table}" ({col_insert}) SELECT {col_select} FROM "{table}"'
+            f'INSERT OR REPLACE INTO "{new_table}" ({col_insert}) SELECT {col_select} FROM "{table}" GROUP BY "docid"'
         ))
 
     print(f"완료! 새 테이블이 {db_path}에 생성되었습니다.")
