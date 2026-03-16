@@ -11,8 +11,9 @@ interface EnvCheck {
 
 const ENV_CHECKS: EnvCheck[] = [
     { name: "JWT_SECRET", required: true, description: "JWT signing secret for auth" },
-    { name: "ADMIN_USERNAME", required: true, description: "Admin login username" },
-    { name: "ADMIN_PASSWORD_HASH", required: true, description: "Admin login password hash" },
+    { name: "VALID_USERS", required: false, description: "JSON array of user credentials (primary auth)" },
+    { name: "ADMIN_USERNAME", required: false, description: "Admin login username (legacy fallback)" },
+    { name: "ADMIN_PASSWORD_HASH", required: false, description: "Admin login password hash (legacy fallback)" },
     { name: "DATABASE_PATH", required: false, description: "Path to auction_data.db (defaults to ./database/)" },
     { name: "CLIK_API_KEY", required: false, description: "CLIK council minutes API key" },
     { name: "GEMINI_API_KEY", required: false, description: "Gemini LLM API key" },
@@ -38,6 +39,12 @@ for (const check of ENV_CHECKS) {
 
 if (warnings.length > 0) {
     console.warn(`[ENV] Optional variables not set (some features will be disabled):\n${warnings.join("\n")}`);
+}
+
+// At least one auth method must be configured
+const hasAuth = process.env.VALID_USERS || (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD_HASH);
+if (!hasAuth) {
+    missing.push("  - Auth: set VALID_USERS or both ADMIN_USERNAME + ADMIN_PASSWORD_HASH");
 }
 
 if (missing.length > 0) {
