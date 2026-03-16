@@ -53,33 +53,23 @@ FLY_TOKEN=$(cd "$PROJECT_DIR/web" && fly auth token 2>/dev/null || echo "")
 # PRECOMPUTE_SECRET 가져오기
 PRECOMPUTE_SECRET=$(cd "$PROJECT_DIR/web" && fly secrets list -a applemango 2>/dev/null | grep PRECOMPUTE_SECRET | awk '{print $1}' || echo "")
 
-# .env 생성 (로컬 .env 기반 + 추가 변수)
-ssh "$NCP_HOST" "cat > /home/crawler/auction-project/crawler/.env" << ENVEOF
-# === Crawler Settings ===
-VWORLD_API_KEY=REDACTED_VWORLD_KEY
-SKIP_VWORLD_API=false
-PAGE_SIZE=40
-BATCH_SIZE=50
-REQUEST_DELAY=1.5
-CONCURRENCY_LIMIT=1
-MAX_RETRIES=3
+# 로컬 .env를 읽어서 NCP에 전송
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ $ENV_FILE 파일이 없습니다. 먼저 로컬 .env를 설정하세요."
+    exit 1
+fi
 
-# === AI ===
-AI_PROVIDER=gemini
-AI_API_KEY=REDACTED_GEMINI_KEY
-AI_MODEL=gemini-3-flash-preview
-
-# === Council Minutes ===
-COUNCIL_API_KEY=REDACTED_COUNCIL_KEY
-COUNCIL_API_BASE_URL=https://clik.nanet.go.kr/openapi/minutes.do
-
-# === Fly.io ===
-FLY_API_TOKEN=${FLY_TOKEN}
-PRECOMPUTE_SECRET=
-
-# === Paths ===
-DATABASE_DIR=/home/crawler/auction-project/crawler/output
-ENVEOF
+# 로컬 .env 기반으로 NCP .env 생성 (경로만 NCP용으로 변경)
+{
+    grep -v '^DATABASE_DIR=' "$ENV_FILE" | grep -v '^FLY_API_TOKEN='
+    echo ""
+    echo "# === Fly.io ==="
+    echo "FLY_API_TOKEN=${FLY_TOKEN}"
+    echo "PRECOMPUTE_SECRET="
+    echo ""
+    echo "# === Paths ==="
+    echo "DATABASE_DIR=/home/crawler/auction-project/crawler/output"
+} | ssh "$NCP_HOST" "cat > /home/crawler/auction-project/crawler/.env"
 
 echo "✅ .env uploaded"
 echo ""
