@@ -6,18 +6,20 @@ The 투자시그널 tab depends on the EUM API (`api.eum.go.kr`), which requires
 
 ## Solution
 
-Route EUM API traffic through a lightweight nginx reverse proxy on the existing NCP VM (`175.106.98.80`), which has a static public IP. The web app stays on Fly.io; only EUM requests are proxied.
+Route EUM API traffic through a lightweight nginx reverse proxy on the existing NCP VM (`175.106.98.80`), which has a static public IP. The web app stays on Fly.io; only EUM requests are proxied. The proxy injects EUM API credentials server-side so they never travel unencrypted.
 
 ## Architecture
 
 ```
-Fly.io (Next.js app)              NCP VM (175.106.98.80)            EUM API
-────────────────────              ──────────────────────            ────────────────────
-GET /eum/arMapList?...   ──→     nginx :8080                 ──→  api.eum.go.kr/web/Rest/OP
-    + X-Proxy-Key header          - validates X-Proxy-Key
-                                  - proxy_pass to eum.go.kr
-                                  - strips proxy key upstream
+Fly.io (Next.js app)                 NCP VM (175.106.98.80)                  EUM API
+────────────────────                 ──────────────────────                  ────────────────────
+GET /eum/arMapList?areaCd=...  ──→  nginx :8080                       ──→  api.eum.go.kr/web/Rest/OP
+    + X-Proxy-Key header             - validates X-Proxy-Key
+    (no EUM credentials)             - injects EUM id+key server-side
+                                     - proxy_pass over HTTPS to eum.go.kr
 ```
+
+**Key security property:** The client sends only non-sensitive query params (areaCd, dates, PageNo) over the unencrypted Fly.io → NCP hop. EUM API credentials (`id`/`key`) are injected at the proxy layer and only travel over HTTPS to `eum.go.kr`.
 
 ### What stays the same
 
@@ -33,7 +35,8 @@ GET /eum/arMapList?...   ──→     nginx :8080                 ──→  ap
 |-----------|--------|-------|
 | EUM API calls | Fly.io → eum.go.kr (direct) | Fly.io → NCP proxy → eum.go.kr |
 | IP whitelisted with EUM | Fly.io IP (unstable) | NCP IP `175.106.98.80` (static) |
-| `web/src/lib/eum/client.ts` | Hardcoded `EUM_BASE_URL` | Reads `EUM_PROXY_URL` env var with fallback |
+| EUM credentials location | Fly.io env vars, sent by client | NCP proxy config, injected server-side |
+| `web/src/lib/eum/client.ts` | Hardcoded `EUM_BASE_URL`, client sends `id`/`key` | Reads `EUM_PROXY_URL` env var, skips `id`/`key` when proxied |
 
 ## Detailed Design
 
@@ -44,30 +47,73 @@ nginx reverse proxy on the NCP VM, listening on port 8080.
 **Config (`/etc/nginx/sites-available/eum-proxy`):**
 
 ```nginx
+# Rate limiting: 10 req/s with burst of 20
+limit_req_zone $binary_remote_addr zone=eum_limit:1m rate=10r/s;
+
 server {
     listen 8080;
 
-    # Reject requests without valid proxy key
-    set $valid "";
-    if ($http_x_proxy_key = "<EUM_PROXY_KEY_VALUE>") {
-        set $valid "yes";
-    }
-    if ($valid != "yes") {
-        return 403;
+    # --- Shared proxy key (loaded for use in location blocks) ---
+    include /etc/nginx/secrets/eum-proxy-key.conf;
+    # eum-proxy-key.conf contains: set $proxy_key "<value>";
+
+    # --- Health check (no auth required) ---
+    location = /health {
+        default_type text/plain;
+        return 200 "ok";
     }
 
+    # --- EUM API proxy (auth required) ---
     location /eum/ {
-        proxy_pass https://api.eum.go.kr/web/Rest/OP/;
+        # Auth: reject requests without valid proxy key
+        if ($http_x_proxy_key != $proxy_key) {
+            return 403;
+        }
+
+        limit_req zone=eum_limit burst=20 nodelay;
+
+        # Inject EUM credentials server-side
+        include /etc/nginx/secrets/eum-api-credentials.conf;
+        # eum-api-credentials.conf contains:
+        #   set $eum_id "applemango";
+        #   set $eum_key "1WjgMVG9WoAUw6hxjiKLzg==";
+
+        # Append EUM auth params to the upstream query string
+        set $upstream_args "${args}&id=${eum_id}&key=${eum_key}";
+
+        proxy_pass https://api.eum.go.kr/web/Rest/OP/?$upstream_args;
         proxy_set_header Host api.eum.go.kr;
         proxy_set_header X-Proxy-Key "";
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_ssl_server_name on;
+
+        # Timeouts aligned with client's 15s AbortSignal
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 20s;
+        proxy_send_timeout 10s;
     }
 
+    # Block everything else
     location / {
         return 404;
     }
+
+    # --- Logging: omit query strings (contain EUM credentials upstream) ---
+    log_format proxy_safe '$remote_addr - [$time_local] "$request_method $uri" '
+                          '$status $body_bytes_sent';
+    access_log /var/log/nginx/eum-proxy-access.log proxy_safe;
+    error_log /var/log/nginx/eum-proxy-error.log warn;
 }
 ```
+
+**Secrets files** (restricted permissions):
+
+```
+/etc/nginx/secrets/eum-proxy-key.conf       # chmod 640, root:www-data
+/etc/nginx/secrets/eum-api-credentials.conf  # chmod 640, root:www-data
+```
+
+These files are created manually on the VM and never committed to git.
 
 **Endpoints proxied:**
 
@@ -81,10 +127,12 @@ server {
 
 **Security:**
 - `X-Proxy-Key` header required on all requests (shared secret, 403 without it)
+- Proxy key stored in a separate include file with restricted permissions (`chmod 640 root:www-data`)
 - Key stripped before forwarding to EUM (no leak upstream)
+- EUM credentials injected at the proxy layer — never sent by the client, never travel unencrypted
 - Only `/eum/` location proxied; all other paths return 404
-- Upstream connection to eum.go.kr uses HTTPS (EUM credentials in query params are encrypted in transit)
-- Fly.io → NCP is plain HTTP on port 8080 (acceptable: proxy key authenticates, EUM credentials travel over HTTPS to eum.go.kr)
+- Rate limited to 10 req/s with burst of 20 to prevent abuse
+- Access logs use a custom format that omits query strings (which contain EUM credentials on the upstream side)
 
 **NCP firewall:** Inbound TCP 8080 must be allowed in NCP security group.
 
@@ -100,9 +148,25 @@ const EUM_BASE_URL = "https://api.eum.go.kr/web/Rest/OP";
 
 // After
 const EUM_BASE_URL = process.env.EUM_PROXY_URL || "https://api.eum.go.kr/web/Rest/OP";
+const IS_PROXIED = !!process.env.EUM_PROXY_URL;
 ```
 
-Add proxy key header to all 3 fetch calls (lines ~82, ~300, ~405):
+Modify `getAuthParams()` to skip credentials when proxied (proxy injects them):
+
+```ts
+function getAuthParams(): URLSearchParams | null {
+    if (IS_PROXIED) {
+        // Proxy injects EUM credentials server-side; don't send them over HTTP
+        return new URLSearchParams();
+    }
+    const id = process.env.EUM_API_ID;
+    const key = process.env.EUM_API_KEY;
+    if (!id || !key) return null;
+    return new URLSearchParams({ id, key });
+}
+```
+
+Add proxy key header helper:
 
 ```ts
 function getProxyHeaders(): Record<string, string> {
@@ -112,8 +176,12 @@ function getProxyHeaders(): Record<string, string> {
     }
     return {};
 }
+```
 
-// In each fetch call:
+Attach headers to all 3 fetch calls (lines ~82, ~300, ~405):
+
+```ts
+// In each fetch call, add headers:
 const response = await fetch(`${EUM_BASE_URL}/arMapList?${params}`, {
     signal: AbortSignal.timeout(15000),
     headers: getProxyHeaders(),
@@ -122,48 +190,73 @@ const response = await fetch(`${EUM_BASE_URL}/arMapList?${params}`, {
 
 **File: `.env.example`**
 
-Add placeholder entries:
+Add under the existing Frontend Settings section:
 
 ```env
 # EUM API Proxy (optional — falls back to direct eum.go.kr if unset)
+# When set, EUM credentials are injected server-side by the proxy
 EUM_PROXY_URL=
 EUM_PROXY_KEY=
 ```
 
-**Local development:** Without `EUM_PROXY_URL` set, the client falls back to the direct EUM URL. No change to local dev workflow.
+**Local development:** Without `EUM_PROXY_URL` set, the client falls back to direct EUM URL with `id`/`key` in query params (existing behavior). No change to local dev workflow.
 
 ### 3. Environment Variables
 
 | Variable | Location | Value | Committed? |
 |----------|----------|-------|------------|
 | `EUM_PROXY_URL` | Fly.io secrets | `http://175.106.98.80:8080/eum` | No |
-| `EUM_PROXY_KEY` | Fly.io secrets + NCP nginx config | `openssl rand -hex 32` output | No |
-| `EUM_API_ID` | Fly.io secrets (unchanged) | existing value | No |
-| `EUM_API_KEY` | Fly.io secrets (unchanged) | existing value | No |
+| `EUM_PROXY_KEY` | Fly.io secrets + NCP `/etc/nginx/secrets/eum-proxy-key.conf` | `openssl rand -hex 32` output | No |
+| `EUM_API_ID` | NCP `/etc/nginx/secrets/eum-api-credentials.conf` only | existing value | No |
+| `EUM_API_KEY` | NCP `/etc/nginx/secrets/eum-api-credentials.conf` only | existing value | No |
+
+**Note:** After migration, `EUM_API_ID` and `EUM_API_KEY` can be removed from Fly.io secrets since the proxy handles authentication. Keep them during transition for rollback.
+
+### 4. Health Check & Monitoring
+
+The nginx config includes a `/health` endpoint (no auth required) that returns HTTP 200.
+
+**Recommended monitoring:** Set up a free external uptime monitor (e.g., UptimeRobot) pointing at `http://175.106.98.80:8080/health` with alerting to your preferred channel. This detects proxy downtime before users notice missing signal data.
 
 ## Deployment Plan
 
 Steps are ordered so that nothing breaks at any intermediate point.
 
-1. **Set up NCP proxy** — install nginx, add config, open port 8080, test locally on the VM
+1. **Set up NCP proxy**
+   - `apt install nginx`
+   - Create `/etc/nginx/secrets/` directory (`chmod 750 root:www-data`)
+   - Write `eum-proxy-key.conf` and `eum-api-credentials.conf` (`chmod 640 root:www-data`)
+   - Add nginx config at `/etc/nginx/sites-available/eum-proxy`, symlink to `sites-enabled`
+   - `systemctl enable --now nginx`
+   - Test locally: `curl -H "X-Proxy-Key: <key>" http://localhost:8080/health`
+
 2. **Whitelist NCP IP with EUM** — request `175.106.98.80`. Keep old Fly.io IP during transition
-3. **Test proxy end-to-end** — curl from external machine through proxy to confirm EUM responds
+
+3. **Test proxy end-to-end** — from an external machine:
+   ```bash
+   curl -v -H "X-Proxy-Key: <key>" \
+     "http://175.106.98.80:8080/eum/arMapList?areaCd=11680&startDt=20240101&endDt=20260101&PageNo=1"
+   ```
+   Expect XML response with government notice data (or an empty result set).
+
 4. **Deploy web app changes** — set Fly.io secrets (`EUM_PROXY_URL`, `EUM_PROXY_KEY`), deploy updated code
+
 5. **Verify 투자시그널 tab** — trigger precompute, confirm signal data flows
-6. **Remove old Fly.io IP from EUM whitelist** — only after confirming everything works
+
+6. **Clean up** — remove old Fly.io IP from EUM whitelist; optionally remove `EUM_API_ID`/`EUM_API_KEY` from Fly.io secrets
 
 ## Rollback
 
 - **Before step 4:** Web app is unchanged, no impact
-- **After step 4:** Remove `EUM_PROXY_URL` from Fly.io secrets → app falls back to direct EUM URL (still whitelisted until step 6)
-- **After step 6:** Re-add Fly.io IP to EUM whitelist, remove `EUM_PROXY_URL` from Fly.io
+- **After step 4:** Remove `EUM_PROXY_URL` from Fly.io secrets → app falls back to direct EUM URL (still whitelisted until step 6, `EUM_API_ID`/`EUM_API_KEY` still in Fly.io secrets)
+- **After step 6:** Re-add Fly.io IP to EUM whitelist, re-add `EUM_API_ID`/`EUM_API_KEY` to Fly.io secrets, remove `EUM_PROXY_URL`
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `web/src/lib/eum/client.ts` | Read `EUM_PROXY_URL` env var, add `getProxyHeaders()` helper, attach header to 3 fetch calls |
-| `.env.example` | Add `EUM_PROXY_URL` and `EUM_PROXY_KEY` placeholder entries |
+| `web/src/lib/eum/client.ts` | Read `EUM_PROXY_URL` env var, skip auth params when proxied, add `getProxyHeaders()` helper, attach header to 3 fetch calls |
+| `.env.example` | Add `EUM_PROXY_URL` and `EUM_PROXY_KEY` placeholders under Frontend Settings |
 
 ## Out of Scope
 
