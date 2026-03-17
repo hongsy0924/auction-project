@@ -75,8 +75,8 @@ server {
         # Inject EUM credentials server-side
         include /etc/nginx/secrets/eum-api-credentials.conf;
         # eum-api-credentials.conf contains:
-        #   set $eum_id "applemango";
-        #   set $eum_key "1WjgMVG9WoAUw6hxjiKLzg==";
+        #   set $eum_id "<YOUR_EUM_API_ID>";
+        #   set $eum_key "<YOUR_EUM_API_KEY>";
 
         # Append EUM auth params to the upstream query string
         set $upstream_args "${args}&id=${eum_id}&key=${eum_key}";
