@@ -6,7 +6,9 @@
  *   - arLandUseInfo:  토지이용규제 행위제한정보 — XML
  *   - isDevList:      개발 인허가 목록 조회 — JSON
  *
- * Auth: id + key query parameters, IP-whitelisted to Fly.io.
+ * Auth: When EUM_PROXY_URL is set, requests go through the NCP proxy
+ * which injects EUM credentials server-side. Otherwise, id + key query
+ * parameters are sent directly to eum.go.kr (requires IP whitelisting).
  */
 import { getXmlTag, getXmlTagAll } from "../xml-utils";
 import {
@@ -21,13 +23,29 @@ import {
     type CachedEumRestriction,
 } from "../minutes/cache";
 
-const EUM_BASE_URL = "https://api.eum.go.kr/web/Rest/OP";
+const EUM_BASE_URL = process.env.EUM_PROXY_URL || "https://api.eum.go.kr/web/Rest/OP";
+const IS_PROXIED = !!process.env.EUM_PROXY_URL;
+
+if (IS_PROXIED && !process.env.EUM_PROXY_KEY) {
+    console.warn("[EUM] EUM_PROXY_URL is set but EUM_PROXY_KEY is missing — proxy will reject requests with 403");
+}
 
 function getAuthParams(): URLSearchParams | null {
+    if (IS_PROXIED) {
+        return new URLSearchParams();
+    }
     const id = process.env.EUM_API_ID;
     const key = process.env.EUM_API_KEY;
     if (!id || !key) return null;
     return new URLSearchParams({ id, key });
+}
+
+function getProxyHeaders(): Record<string, string> {
+    const proxyKey = process.env.EUM_PROXY_KEY;
+    if (proxyKey) {
+        return { "X-Proxy-Key": proxyKey };
+    }
+    return {};
 }
 
 // ─── 3.6 고시정보 (Notices) ─────────────────────────────────────────
@@ -80,7 +98,7 @@ export async function getEumNotices(areaCd: string): Promise<CachedEumNotice[]> 
 
             const response = await fetch(
                 `${EUM_BASE_URL}/arMapList?${params}`,
-                { signal: AbortSignal.timeout(15000) }
+                { signal: AbortSignal.timeout(15000), headers: getProxyHeaders() }
             );
 
             if (!response.ok) {
@@ -299,7 +317,7 @@ export async function getEumDevPermits(areaCd: string): Promise<CachedEumPermit[
 
             const response = await fetch(
                 `${EUM_BASE_URL}/isDevList?${params}`,
-                { signal: AbortSignal.timeout(15000) }
+                { signal: AbortSignal.timeout(15000), headers: getProxyHeaders() }
             );
 
             if (!response.ok) {
@@ -404,7 +422,7 @@ export async function getEumRestrictions(areaCd: string): Promise<CachedEumRestr
 
         const response = await fetch(
             `${EUM_BASE_URL}/arLandUseInfo?${params}`,
-            { signal: AbortSignal.timeout(15000) }
+            { signal: AbortSignal.timeout(15000), headers: getProxyHeaders() }
         );
 
         if (!response.ok) {
