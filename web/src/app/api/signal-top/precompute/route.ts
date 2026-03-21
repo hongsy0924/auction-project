@@ -250,6 +250,8 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
                     공시지가총액: item["공시지가총액"],
                     "최저가/공시지가비율": item["최저가/공시지가비율"],
                     시설경과연수: item["시설경과연수"],
+                    포함: item["포함"] || null,
+                    저촉: item["저촉"] || null,
                     score_breakdown: scoreResult.components,
                     gosi_stage: maxGosiStage,
                 }),
