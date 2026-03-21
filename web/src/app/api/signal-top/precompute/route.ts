@@ -157,7 +157,9 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
             if (pnu) {
                 try {
                     facilities = await getUrbanPlanFacilities(pnu);
-                } catch { /* non-fatal */ }
+                } catch (err) {
+                    console.error(`[Precompute] LURIS error for PNU ${pnu}:`, (err as Error).message);
+                }
             }
 
             // EUM data (pre-indexed by area code)

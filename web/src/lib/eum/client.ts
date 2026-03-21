@@ -160,7 +160,7 @@ export async function getEumNotices(areaCd: string): Promise<CachedEumNotice[]> 
         link: n.link,
         relatedAddress: n.summary?.slice(0, 200),
     }));
-    setCachedEumNotices(areaCd, cacheable).catch(() => {});
+    setCachedEumNotices(areaCd, cacheable).catch((err) => console.error(`[EUM] Cache write error (notices):`, err));
 
     console.log(`[EUM] Cached ${cacheable.length} notices for ${areaCd} (deduped from ${allNotices.length})`);
     return cacheable;
@@ -426,7 +426,7 @@ export async function getEumDevPermits(areaCd: string): Promise<CachedEumPermit[
         areaCd: p.areaCd,
         area: p.area,
     }));
-    setCachedEumPermits(areaCd, cacheable).catch(() => {});
+    setCachedEumPermits(areaCd, cacheable).catch((err) => console.error(`[EUM] Cache write error (permits):`, err));
 
     console.log(`[EUM] Cached ${cacheable.length} permits for ${areaCd}`);
     return cacheable;
@@ -528,7 +528,7 @@ export async function getEumRestrictions(areaCd: string): Promise<CachedEumRestr
         description: `${r.zoneName} — ${r.activityName}: ${r.allowed}`,
         areaCd: r.areaCd,
     }));
-    setCachedEumRestrictions(areaCd, cacheable).catch(() => {});
+    setCachedEumRestrictions(areaCd, cacheable).catch((err) => console.error(`[EUM] Cache write error (restrictions):`, err));
 
     return cacheable;
 }

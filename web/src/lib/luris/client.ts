@@ -90,7 +90,7 @@ export async function getUrbanPlanFacilities(pnu: string): Promise<UrbanPlanFaci
             decisionDate: f.decisionDate,
             executionStatus: f.executionStatus,
         }));
-        setCachedLuris(pnu, cacheable).catch(() => {});
+        setCachedLuris(pnu, cacheable).catch((err) => console.error(`[LURIS] Cache write error:`, err));
 
         console.log(`[LURIS] Found ${unique.length} regulation entries for PNU ${pnu} (area: ${areaCd})`);
         return unique;
@@ -124,12 +124,25 @@ async function queryLandUseInfo(
             { signal: AbortSignal.timeout(10000) }
         );
 
-        if (!response.ok) return [];
+        if (!response.ok) {
+            console.error(`[LURIS] HTTP ${response.status} for areaCd=${areaCd} ucode=${ucodeList} activity=${landUseNm}`);
+            return [];
+        }
 
         const buffer = await response.arrayBuffer();
         const xml = new TextDecoder("euc-kr").decode(buffer);
+
+        // Check for API error response
+        const resultCode = xml.match(/<resultCode>(\d+)<\/resultCode>/)?.[1];
+        if (resultCode && resultCode !== "0") {
+            const resultMsg = xml.match(/<resultMsg>([^<]*)<\/resultMsg>/)?.[1] || "unknown";
+            console.error(`[LURIS] API error ${resultCode}: ${resultMsg} for areaCd=${areaCd}`);
+            return [];
+        }
+
         return parseDTarLandUseInfoXml(xml);
-    } catch {
+    } catch (err) {
+        console.error(`[LURIS] queryLandUseInfo failed for areaCd=${areaCd}:`, (err as Error).message);
         return [];
     }
 }
