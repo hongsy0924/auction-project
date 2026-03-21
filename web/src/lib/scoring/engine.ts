@@ -3,6 +3,7 @@
  * Replaces the old 200-point proxy scoring with a 0-1.0 data-driven score.
  */
 import { SCORING_CONFIG, type ScoreComponent } from "./config";
+import { containsFacilityTerms } from "./facility";
 
 export interface ScoreBreakdown {
     total: number;
@@ -22,17 +23,21 @@ export interface ScoringInput {
     yuchalCount?: number;
 }
 
-/** Calculate facility coverage score (0-1.0) from 포함/저촉/접합 data. */
+/**
+ * Calculate facility coverage score (0-1.0) from 포함/저촉/접합 data.
+ * Only scores when the text contains actual 도시계획시설 terms (도로, 공원, 하천, etc.),
+ * NOT generic zoning designations (용도지역, 대공방어협조구역, etc.).
+ */
 function scoreFacilityCoverage(input: ScoringInput): number {
     const cfg = SCORING_CONFIG.facility_coverage;
     let maxScore = 0;
-    if (input.facilityInclude && input.facilityInclude.trim()) {
+    if (containsFacilityTerms(input.facilityInclude)) {
         maxScore = Math.max(maxScore, cfg["포함"] ?? 0);
     }
-    if (input.facilityConflict && input.facilityConflict.trim()) {
+    if (containsFacilityTerms(input.facilityConflict)) {
         maxScore = Math.max(maxScore, cfg["저촉"] ?? 0);
     }
-    if (input.facilityAdjoin && input.facilityAdjoin.trim()) {
+    if (containsFacilityTerms(input.facilityAdjoin)) {
         maxScore = Math.max(maxScore, cfg["접합"] ?? 0);
     }
     return maxScore;
