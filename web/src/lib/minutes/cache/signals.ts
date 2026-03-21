@@ -106,7 +106,7 @@ export interface PropertyScore {
     scored_at: number;
 }
 
-export type ScoreSortKey = "score" | "price_ratio" | "facility_age" | "gosi_stage" | "facility" | "compensation";
+export type ScoreSortKey = "score" | "facility_age" | "gosi_stage" | "facility" | "compensation";
 
 export interface ScoreQueryOptions {
     limit?: number;
@@ -114,6 +114,10 @@ export interface ScoreQueryOptions {
     sort?: ScoreSortKey;
     filterCompensation?: boolean;
     excludeHousing?: boolean;
+    filterFacility?: boolean;
+    facilityType?: string;
+    filterIncludeOnly?: boolean;
+    filterUnexecutedOnly?: boolean;
 }
 
 function buildScoreQuery(opts: ScoreQueryOptions, countOnly: boolean): { sql: string; params: unknown[] } {
@@ -130,6 +134,29 @@ function buildScoreQuery(opts: ScoreQueryOptions, countOnly: boolean): { sql: st
             AND json_extract(auction_data, '$.물건종류') NOT LIKE '%주택%'`);
     }
 
+    if (opts.filterFacility) {
+        where.push(`(
+            (json_extract(auction_data, '$.포함') IS NOT NULL AND json_extract(auction_data, '$.포함') != '')
+            OR (json_extract(auction_data, '$.저촉') IS NOT NULL AND json_extract(auction_data, '$.저촉') != '')
+        )`);
+    }
+
+    if (opts.facilityType) {
+        where.push(`(
+            json_extract(auction_data, '$.포함') LIKE ?
+            OR json_extract(auction_data, '$.저촉') LIKE ?
+        )`);
+        params.push(`%${opts.facilityType}%`, `%${opts.facilityType}%`);
+    }
+
+    if (opts.filterIncludeOnly) {
+        where.push("(json_extract(auction_data, '$.포함') IS NOT NULL AND json_extract(auction_data, '$.포함') != '')");
+    }
+
+    if (opts.filterUnexecutedOnly) {
+        where.push("has_unexecuted = 1");
+    }
+
     const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
     if (countOnly) {
@@ -139,9 +166,6 @@ function buildScoreQuery(opts: ScoreQueryOptions, countOnly: boolean): { sql: st
     // auction_data is JSON text — use json_extract for embedded fields
     let orderBy: string;
     switch (opts.sort) {
-        case "price_ratio":
-            orderBy = "CAST(json_extract(auction_data, '$.\"최저가/공시지가비율\"') AS REAL) ASC, score DESC";
-            break;
         case "facility_age":
             orderBy = "CAST(json_extract(auction_data, '$.시설경과연수') AS REAL) DESC, score DESC";
             break;
@@ -220,6 +244,40 @@ export async function clearPropertyScores(excludeBatchId?: string): Promise<void
     } else {
         await runAsync("DELETE FROM property_scores");
     }
+}
+
+export async function getFacilityTypeCounts(): Promise<{ type: string; count: number }[]> {
+    await ensureInitialized();
+
+    const rows = await allAsync<{ pohaam: string | null; jeochok: string | null }>(
+        `SELECT
+            json_extract(auction_data, '$.포함') as pohaam,
+            json_extract(auction_data, '$.저촉') as jeochok
+         FROM property_scores
+         WHERE (json_extract(auction_data, '$.포함') IS NOT NULL AND json_extract(auction_data, '$.포함') != '')
+            OR (json_extract(auction_data, '$.저촉') IS NOT NULL AND json_extract(auction_data, '$.저촉') != '')`,
+        []
+    );
+
+    // Extract facility category from text like "소로1류(8m미만) — 도로" → "도로"
+    // Handles various dash characters: em-dash (—), en-dash (–), hyphen (-)
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+        const categories = new Set<string>();
+        for (const val of [row.pohaam, row.jeochok]) {
+            if (!val || !val.trim()) continue;
+            const parts = val.split(/\s*[—–\-]\s*/).filter(Boolean);
+            const category = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+            if (category) categories.add(category);
+        }
+        for (const cat of categories) {
+            counts.set(cat, (counts.get(cat) || 0) + 1);
+        }
+    }
+
+    return Array.from(counts.entries())
+        .map(([type, count]) => ({ type, count }))
+        .sort((a, b) => b.count - a.count);
 }
 
 // --- Property Analysis ---

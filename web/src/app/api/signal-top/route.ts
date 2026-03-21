@@ -4,13 +4,14 @@ import {
     getPropertyScoreCount,
     getPropertyAnalysisBatch,
     getHotZoneAlerts,
+    getFacilityTypeCounts,
     type ScoreSortKey,
     type ScoreQueryOptions,
 } from "@/lib/minutes/cache";
 
 export const dynamic = "force-dynamic";
 
-const VALID_SORTS = new Set<ScoreSortKey>(["score", "price_ratio", "facility_age", "gosi_stage", "facility", "compensation"]);
+const VALID_SORTS = new Set<ScoreSortKey>(["score", "facility_age", "gosi_stage", "facility", "compensation"]);
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -20,9 +21,13 @@ export async function GET(request: NextRequest) {
     const sort: ScoreSortKey = VALID_SORTS.has(sortParam as ScoreSortKey) ? (sortParam as ScoreSortKey) : "score";
     const filterCompensation = searchParams.get("filter_compensation") === "1";
     const excludeHousing = searchParams.get("exclude_housing") === "1";
+    const filterFacility = searchParams.get("filter_facility") === "1";
+    const facilityType = searchParams.get("facility_type") || undefined;
+    const filterIncludeOnly = searchParams.get("filter_include_only") === "1";
+    const filterUnexecutedOnly = searchParams.get("filter_unexecuted_only") === "1";
 
-    // Cap total results at 100 (top scores only)
-    const MAX_RESULTS = 100;
+    // Cap total results (expanded when facility filter is active)
+    const MAX_RESULTS = filterFacility ? 500 : 100;
     const offset = (page - 1) * perPage;
 
     if (offset >= MAX_RESULTS) {
@@ -30,7 +35,10 @@ export async function GET(request: NextRequest) {
     }
 
     const adjustedLimit = Math.min(perPage, MAX_RESULTS - offset);
-    const queryOpts: ScoreQueryOptions = { limit: adjustedLimit, offset, sort, filterCompensation, excludeHousing };
+    const queryOpts: ScoreQueryOptions = {
+        limit: adjustedLimit, offset, sort, filterCompensation, excludeHousing,
+        filterFacility, facilityType, filterIncludeOnly, filterUnexecutedOnly,
+    };
 
     try {
         const [items, rawTotal] = await Promise.all([
@@ -61,7 +69,14 @@ export async function GET(request: NextRequest) {
             hotZoneAlerts = await getHotZoneAlerts();
         } catch { /* non-critical */ }
 
-        return Response.json({ data, total, page, perPage, hotZoneAlerts });
+        let facilityTypeCounts: { type: string; count: number }[] = [];
+        if (filterFacility) {
+            try {
+                facilityTypeCounts = await getFacilityTypeCounts();
+            } catch { /* non-critical */ }
+        }
+
+        return Response.json({ data, total, page, perPage, hotZoneAlerts, facilityTypeCounts });
     } catch (err) {
         console.error("[signal-top] Error:", err);
         return Response.json({ error: "Failed to fetch signal scores" }, { status: 500 });
