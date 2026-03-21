@@ -11,19 +11,19 @@ describe("calculateScore", () => {
     it("scores facility_coverage: 포함 = 1.0 raw", () => {
         const result = calculateScore({ facilityInclude: "도로" });
         expect(result.components.facility_coverage.raw).toBe(1.0);
-        expect(result.components.facility_coverage.weighted).toBeCloseTo(0.2); // 1.0 * 0.20
+        expect(result.components.facility_coverage.weighted).toBeCloseTo(0.4); // 1.0 * 0.40
     });
 
     it("scores facility_coverage: 저촉 = 0.7 raw", () => {
         const result = calculateScore({ facilityConflict: "도로" });
         expect(result.components.facility_coverage.raw).toBe(0.7);
-        expect(result.components.facility_coverage.weighted).toBeCloseTo(0.14);
+        expect(result.components.facility_coverage.weighted).toBeCloseTo(0.28);
     });
 
     it("scores facility_coverage: 접합 = 0.3 raw", () => {
         const result = calculateScore({ facilityAdjoin: "도로" });
         expect(result.components.facility_coverage.raw).toBe(0.3);
-        expect(result.components.facility_coverage.weighted).toBeCloseTo(0.06);
+        expect(result.components.facility_coverage.weighted).toBeCloseTo(0.12);
     });
 
     it("takes max when multiple coverage types exist", () => {
@@ -67,24 +67,6 @@ describe("calculateScore", () => {
         expect(calculateScore({ gosiStage: 4 }).components.gosi_stage.raw).toBe(1.0);
     });
 
-    it("scores price_attractiveness tiers", () => {
-        // ratio ≤ 0.5 = 1.0
-        expect(calculateScore({ minToOfficialRatio: 0.3 }).components.price_attractiveness.raw).toBe(1.0);
-        // ratio ≤ 0.7 = 0.7
-        expect(calculateScore({ minToOfficialRatio: 0.6 }).components.price_attractiveness.raw).toBe(0.7);
-        // ratio ≤ 0.9 = 0.4
-        expect(calculateScore({ minToOfficialRatio: 0.85 }).components.price_attractiveness.raw).toBe(0.4);
-        // ratio ≤ 1.2 = 0.1
-        expect(calculateScore({ minToOfficialRatio: 1.1 }).components.price_attractiveness.raw).toBe(0.1);
-        // ratio > 1.2 = 0
-        expect(calculateScore({ minToOfficialRatio: 1.5 }).components.price_attractiveness.raw).toBe(0);
-    });
-
-    it("scores price_attractiveness: null/0 → 0", () => {
-        expect(calculateScore({ minToOfficialRatio: null }).components.price_attractiveness.raw).toBe(0);
-        expect(calculateScore({ minToOfficialRatio: 0 }).components.price_attractiveness.raw).toBe(0);
-    });
-
     it("scores timing: yuchalCount capped at 0.6", () => {
         expect(calculateScore({ yuchalCount: 1 }).components.timing.raw).toBeCloseTo(0.15);
         expect(calculateScore({ yuchalCount: 3 }).components.timing.raw).toBeCloseTo(0.45);
@@ -94,20 +76,19 @@ describe("calculateScore", () => {
 
     it("composite score sums weighted components", () => {
         const input: ScoringInput = {
-            facilityInclude: "도로",      // raw=1.0, weighted=0.20
-            facilityAgeYears: 20,         // raw=1.0, weighted=0.10
+            facilityInclude: "도로",      // raw=1.0, weighted=0.40
+            facilityAgeYears: 20,         // raw=1.0, weighted=0.15
             gosiStage: 4,                 // raw=1.0, weighted=0.30
-            minToOfficialRatio: 0.3,      // raw=1.0, weighted=0.25
             yuchalCount: 5,               // raw=0.6, weighted=0.09
         };
         const result = calculateScore(input);
-        // 0.20 + 0.10 + 0.30 + 0.25 + 0.09 = 0.94
+        // 0.40 + 0.15 + 0.30 + 0.09 = 0.94
         expect(result.total).toBeCloseTo(0.94, 2);
     });
 
     it("total is rounded to 3 decimal places", () => {
         const result = calculateScore({ facilityConflict: "도로", yuchalCount: 1 });
-        // 0.7*0.20 + 0.15*0.15 = 0.14 + 0.0225 = 0.1625 → rounds to 0.163
+        // 0.7*0.40 + 0.15*0.15 = 0.28 + 0.0225 = 0.3025 → rounds to 0.303
         const totalStr = result.total.toString();
         const decimals = totalStr.split(".")[1] || "";
         expect(decimals.length).toBeLessThanOrEqual(3);
@@ -121,13 +102,11 @@ describe("buildScoringInput", () => {
             "저촉": "",
             "접합": "",
             "시설경과연수": "15.5",
-            "최저가/공시지가비율": "0.45",
             "유찰회수": "3",
         };
         const input = buildScoringInput(item, 2);
         expect(input.facilityInclude).toBe("도로");
         expect(input.facilityAgeYears).toBeCloseTo(15.5);
-        expect(input.minToOfficialRatio).toBeCloseTo(0.45);
         expect(input.yuchalCount).toBe(3);
         expect(input.gosiStage).toBe(2);
     });
@@ -137,7 +116,6 @@ describe("buildScoringInput", () => {
         const input = buildScoringInput(item, 0);
         expect(input.facilityInclude).toBe("");
         expect(input.facilityAgeYears).toBeUndefined();
-        expect(input.minToOfficialRatio).toBeUndefined();
         expect(input.yuchalCount).toBe(0);
     });
 });

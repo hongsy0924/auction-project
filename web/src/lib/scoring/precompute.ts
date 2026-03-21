@@ -8,7 +8,6 @@ export function buildScoringInput(item: Record<string, unknown>, gosiStage: numb
         facilityAdjoin: String(item["접합"] || ""),
         facilityAgeYears: parseFloat(String(item["시설경과연수"] || "0")) || undefined,
         gosiStage,
-        minToOfficialRatio: parseFloat(String(item["최저가/공시지가비율"] || "0")) || undefined,
         yuchalCount: parseInt(String(item["유찰회수"] || "0"), 10) || 0,
     };
 }
