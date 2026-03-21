@@ -45,6 +45,7 @@ export interface CachedEumNotice {
     noticeType: string;
     noticeDate: string;
     areaCd: string;
+    link?: string;
     relatedPnu?: string;
     relatedAddress?: string;
 }

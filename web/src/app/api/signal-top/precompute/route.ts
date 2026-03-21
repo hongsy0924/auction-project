@@ -2,15 +2,11 @@ import { NextRequest } from "next/server";
 import { getAllAuctionItems } from "@/lib/db";
 import { resolveAddressToCouncils } from "@/lib/minutes/address-resolver";
 import {
-    getRegionSignals,
-    setRegionSignals,
     setPropertyScore,
     clearPropertyScores,
     clearUpstreamCaches,
     getPropertyScores,
-    type RegionSignal,
 } from "@/lib/minutes/cache";
-import { ClikClient } from "@/lib/minutes/clik-client";
 import { getUrbanPlanFacilities, type UrbanPlanFacility } from "@/lib/luris/client";
 import {
     getEumNotices,
@@ -22,14 +18,8 @@ import {
 } from "@/lib/eum/client";
 import type { CachedEumNotice, CachedEumPermit, CachedEumRestriction } from "@/lib/minutes/cache";
 import { scoreItem } from "@/lib/scoring/precompute";
-import {
-    setCachedGosiMatches,
-    setHotZoneAlerts,
-    type CachedGosiMatch,
-} from "@/lib/minutes/cache";
+import { setHotZoneAlerts } from "@/lib/minutes/cache";
 import { reverseMatchHotZones } from "@/lib/eum/reverse-match";
-
-const SIGNAL_KEYWORDS = ["보상", "편입", "수용", "개발", "착공", "도시계획", "도로", "택지"];
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +35,6 @@ export async function POST(request: NextRequest) {
 
     const batchId = new Date().toISOString().slice(0, 10);
 
-    // Respond immediately, process in background
     processAllItems(batchId, forceRefresh).catch((err) => {
         console.error("[Precompute] Fatal error:", err);
     });
@@ -55,60 +44,6 @@ export async function POST(request: NextRequest) {
         batchId,
         message: "Pre-computation started in background",
     });
-}
-
-// computeScoreV2 is replaced by the scoring engine in @/lib/scoring/engine
-
-// --- Fetch region signals (cache-first, then CLIK API) ---
-
-async function fetchRegionSignals(
-    clikClient: ClikClient,
-    councilCode: string,
-    dongName: string,
-): Promise<RegionSignal[]> {
-    const cached = await getRegionSignals(councilCode, dongName).catch(() => [] as RegionSignal[]);
-    if (cached.length > 0) return cached;
-
-    const entries: { council_code: string; dong_name: string; keyword: string; doc_ids: string[]; doc_count: number }[] = [];
-
-    const results = await Promise.allSettled(
-        SIGNAL_KEYWORDS.map(async (keyword) => {
-            const searchTerm = dongName ? `${dongName} ${keyword}` : keyword;
-            const { totalCount, items } = await clikClient.searchMinutes({
-                keyword: searchTerm,
-                councilCode,
-                listCount: 10,
-            });
-            const docCount = Math.min(totalCount, items.length || totalCount);
-            return { keyword, docCount, items };
-        })
-    );
-
-    for (const result of results) {
-        if (result.status === "fulfilled" && result.value.docCount > 0) {
-            entries.push({
-                council_code: councilCode,
-                dong_name: dongName,
-                keyword: result.value.keyword,
-                doc_ids: result.value.items.map((item) => item.DOCID),
-                doc_count: result.value.docCount,
-            });
-        }
-    }
-
-    if (entries.length > 0) {
-        await setRegionSignals(entries).catch(() => {});
-    }
-
-    return entries.map((e) => ({
-        council_code: e.council_code,
-        dong_name: e.dong_name,
-        keyword: e.keyword,
-        signal_summary: null,
-        doc_ids: JSON.stringify(e.doc_ids),
-        doc_count: e.doc_count,
-        last_updated: Date.now(),
-    }));
 }
 
 // --- EUM pre-indexing ---
@@ -142,7 +77,6 @@ async function preIndexEumData(areaCodes: string[]): Promise<Map<string, EumData
             eumCache.set(areaCd, { notices: [], permits: [], restrictions: [] });
         }
 
-        // Rate limiting between API calls (skip if cache hit)
         if (i < areaCodes.length - 1) {
             await new Promise((resolve) => setTimeout(resolve, 300));
         }
@@ -162,13 +96,6 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
         await clearUpstreamCaches();
         console.log(`[Precompute] Upstream caches cleared.`);
     }
-
-    const clikApiKey = process.env.CLIK_API_KEY;
-    if (!clikApiKey) {
-        console.error("[Precompute] CLIK_API_KEY not set, cannot proceed");
-        return;
-    }
-    const clikClient = new ClikClient(clikApiKey);
 
     let allItems: Record<string, unknown>[];
     try {
@@ -201,16 +128,10 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
     }
     console.log(`[Precompute] Found ${allHotZones.length} hot zones from stage 3-4 gosi`);
 
-    // NOTE: We do NOT clear scores up front. Instead, we write all new scores
-    // with the current batchId, then delete old scores at the end.
-    // This ensures the UI always has data even if precompute crashes mid-run.
     console.log(`[Precompute] Starting scoring (batch=${batchId}). Old scores remain until complete.`);
 
-    // Score all items
-    const signalCache = new Map<string, RegionSignal[]>();
     let scoredCount = 0;
     let resolvedCount = 0;
-    let dongCount = 0;
 
     for (let idx = 0; idx < allItems.length; idx++) {
         const item = allItems[idx];
@@ -219,32 +140,17 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
         const docId = String(item["고유키"] || "");
         if (!address || !docId) continue;
 
-        // Exclude housing items from scoring
         const itemType = String(item["물건종류"] || "");
         if (itemType.includes("주택")) continue;
 
-        if (idx < 3) {
-            console.log(`[Precompute] Processing item ${idx}: address="${address.substring(0, 30)}..." pnu="${pnu}"`);
-        }
-
         if (idx > 0 && idx % 100 === 0) {
-            console.log(`[Precompute] Progress: ${idx}/${allItems.length} (resolved=${resolvedCount}, scored=${scoredCount}, regions=${signalCache.size})`);
+            console.log(`[Precompute] Progress: ${idx}/${allItems.length} (resolved=${resolvedCount}, scored=${scoredCount})`);
         }
 
         try {
             const location = resolveAddressToCouncils(address);
             if (!location || location.councilCodes.length === 0) continue;
             resolvedCount++;
-            if (location.dong) dongCount++;
-
-            const primaryCouncil = location.councilCodes[0];
-            const cacheKey = `${primaryCouncil.code}::${location.dong || ""}`;
-            let signals = signalCache.get(cacheKey);
-            if (!signals) {
-                signals = await fetchRegionSignals(clikClient, primaryCouncil.code, location.dong || "");
-                signalCache.set(cacheKey, signals);
-            }
-            const signalResults = signals.filter((s) => s.doc_count > 0);
 
             // LURIS facilities
             let facilities: UrbanPlanFacility[] = [];
@@ -261,7 +167,7 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
             const permits = eumData?.permits || [];
             const restrictions = eumData?.restrictions || [];
 
-            // Gosi matching for this property
+            // Gosi matching: filter relevant notices, then match to this property's dong
             const relevantGosi = filterRelevantGosi(notices);
             const dongName = location.dong || String(item["동"] || "");
             const gosiMatches = matchGosiToDong(relevantGosi, dongName);
@@ -269,28 +175,11 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
                 ? Math.max(...gosiMatches.map((m) => m.gosiStage))
                 : 0;
 
-            // Cache gosi matches
-            if (gosiMatches.length > 0) {
-                const cacheable: CachedGosiMatch[] = gosiMatches.map((m) => ({
-                    doc_id: docId,
-                    gosi_title: m.notice.title,
-                    gosi_stage: m.gosiStage,
-                    ntc_date: m.notice.noticeDate,
-                    match_type: m.matchType,
-                    area_cd: m.notice.areaCd,
-                    last_updated: Date.now(),
-                }));
-                setCachedGosiMatches(cacheable).catch(() => {});
-            }
-
-            // Scoring engine (extracted to lib/scoring/precompute.ts)
+            // Scoring
             const scoreResult = scoreItem(item, maxGosiStage);
-
             if (scoreResult.total === 0) continue;
 
-            const hasCompensation = signalResults.some((s) =>
-                ["보상", "수용", "편입"].includes(s.keyword)
-            ) || maxGosiStage >= 3;
+            const hasCompensation = maxGosiStage >= 3;
             const hasUnexecuted = facilities.some(
                 (f) => f.executionStatus && f.executionStatus !== "집행완료"
             );
@@ -305,19 +194,12 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
                 sido: location.sido,
                 sigungu: location.sigungu,
                 score: scoreResult.total,
-                signal_count: signalResults.reduce((sum, s) => sum + s.doc_count, 0),
-                signal_keywords: JSON.stringify([...new Set(signalResults.map((s) => s.keyword))]),
+                signal_count: gosiMatches.length,
+                signal_keywords: JSON.stringify([...new Set(gosiMatches.map((m) => m.notice.noticeType))]),
                 facility_count: facilities.length,
                 has_unexecuted: hasUnexecuted ? 1 : 0,
                 has_compensation: hasCompensation ? 1 : 0,
-                signal_details: JSON.stringify(
-                    signalResults.map((s) => ({
-                        keyword: s.keyword,
-                        doc_count: s.doc_count,
-                        signal_summary: s.signal_summary,
-                        council_code: s.council_code,
-                    }))
-                ),
+                signal_details: "[]",
                 facility_details: JSON.stringify(
                     facilities.map((f) => ({
                         facilityName: f.facilityName,
@@ -325,15 +207,18 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
                         executionStatus: f.executionStatus,
                     }))
                 ),
-                notice_count: notices.length,
+                notice_count: gosiMatches.length,
                 permit_count: permits.length,
                 restriction_count: restrictions.length,
-                has_pnu_match: notices.some((n) => n.relatedAddress && n.relatedAddress.length > 0) ? 1 : 0,
+                has_pnu_match: gosiMatches.length > 0 ? 1 : 0,
                 notice_details: JSON.stringify(
-                    notices.slice(0, 20).map((n) => ({
-                        title: n.title,
-                        noticeType: n.noticeType,
-                        noticeDate: n.noticeDate,
+                    gosiMatches.slice(0, 20).map((m) => ({
+                        title: m.notice.title,
+                        noticeType: m.notice.noticeType,
+                        noticeDate: m.notice.noticeDate,
+                        link: m.notice.link || null,
+                        gosiStage: m.gosiStage,
+                        matchType: m.matchType,
                     }))
                 ),
                 permit_details: JSON.stringify(
@@ -411,6 +296,6 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
     }
 
     console.log(
-        `[Precompute] Batch ${batchId} complete. Scored: ${scoredCount}/${allItems.length} (resolved=${resolvedCount}, regions=${signalCache.size}, eumAreas=${eumCache.size})`
+        `[Precompute] Batch ${batchId} complete. Scored: ${scoredCount}/${allItems.length} (resolved=${resolvedCount}, eumAreas=${eumCache.size})`
     );
 }

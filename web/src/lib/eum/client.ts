@@ -143,16 +143,26 @@ export async function getEumNotices(areaCd: string): Promise<CachedEumNotice[]> 
         console.error(`[EUM] Notices fetch error for ${areaCd}:`, err);
     }
 
-    const cacheable: CachedEumNotice[] = allNotices.map((n) => ({
+    // Dedup by title + noticeDate
+    const seen = new Set<string>();
+    const deduped = allNotices.filter((n) => {
+        const key = `${n.title}::${n.noticeDate}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    const cacheable: CachedEumNotice[] = deduped.map((n) => ({
         title: n.title,
         noticeType: extractNoticeType(n.title),
         noticeDate: n.noticeDate,
         areaCd: n.areaCd,
+        link: n.link,
         relatedAddress: n.summary?.slice(0, 200),
     }));
     setCachedEumNotices(areaCd, cacheable).catch(() => {});
 
-    console.log(`[EUM] Cached ${cacheable.length} notices for ${areaCd}`);
+    console.log(`[EUM] Cached ${cacheable.length} notices for ${areaCd} (deduped from ${allNotices.length})`);
     return cacheable;
 }
 
