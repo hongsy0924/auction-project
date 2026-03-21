@@ -25,6 +25,9 @@ interface NoticeDetail {
     title: string;
     noticeType: string;
     noticeDate: string;
+    link?: string;
+    gosiStage?: number;
+    matchType?: string;
 }
 
 interface PermitDetail {
@@ -401,8 +404,6 @@ export default function SignalTopTab() {
 
                                 {/* Signal summary */}
                                 <div className={styles.signalSummary}>
-                                    <FileText size={13} />
-                                    <span>회의록 {item.signal_count}건 발견</span>
                                     {item.facility_count > 0 && (
                                         <>
                                             <Building2 size={13} />
@@ -430,7 +431,6 @@ export default function SignalTopTab() {
                                     )}
                                     {item.notice_count > 0 && <span className={styles.breakdownItem}>고시 {item.notice_count}</span>}
                                     {item.permit_count > 0 && <span className={styles.breakdownItem}>인허가 {item.permit_count}</span>}
-                                    {item.signal_count > 0 && <span className={styles.breakdownItem}>회의록 {item.signal_count}</span>}
                                 </div>
 
                                 {/* Score breakdown */}
@@ -467,13 +467,31 @@ export default function SignalTopTab() {
                                     </div>
                                 )}
 
-                                {/* Notice details */}
+                                {/* Notice details (dong-matched gosi) */}
                                 {item.notice_details && item.notice_details.length > 0 && (
                                     <div className={styles.facilityList}>
                                         {item.notice_details.slice(0, 5).map((n, i) => (
                                             <span key={i} className={styles.facilityItem}>
-                                                <span style={{ color: "#b91c1c", fontWeight: 500 }}>고시</span>{" "}
-                                                {n.title.length > 60 ? n.title.slice(0, 60) + "..." : n.title}
+                                                <span style={{
+                                                    color: GOSI_STAGE_COLORS[n.gosiStage || 0] || "#b91c1c",
+                                                    fontWeight: 600,
+                                                    fontSize: "11px",
+                                                }}>
+                                                    {GOSI_STAGE_LABELS[n.gosiStage || 0] || "고시"}
+                                                </span>{" "}
+                                                {n.link ? (
+                                                    <a
+                                                        href={n.link}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ color: "inherit", textDecoration: "underline" }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {n.title.length > 70 ? n.title.slice(0, 70) + "..." : n.title}
+                                                    </a>
+                                                ) : (
+                                                    <span>{n.title.length > 70 ? n.title.slice(0, 70) + "..." : n.title}</span>
+                                                )}
                                                 {n.noticeDate && (
                                                     <span style={{ color: "var(--text-muted)", fontSize: "11px", marginLeft: "4px" }}>
                                                         ({n.noticeDate})
