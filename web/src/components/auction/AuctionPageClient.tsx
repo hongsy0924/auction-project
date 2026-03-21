@@ -15,8 +15,9 @@ import dynamic from "next/dynamic";
 
 const SignalTopTab = dynamic(() => import("./SignalTopTab"), { ssr: false });
 const MinutesSearchPage = dynamic(() => import("../minutes/MinutesSearchPage"), { ssr: false });
+const CompensationTab = dynamic(() => import("./CompensationTab"), { ssr: false });
 
-type TabId = "auction-list" | "signal-top" | "minutes";
+type TabId = "auction-list" | "signal-top" | "compensation" | "minutes";
 
 export default function AuctionPageClient() {
     const [activeTab, setActiveTab] = useState<TabId>("auction-list");
@@ -47,7 +48,7 @@ export default function AuctionPageClient() {
     }, [page, perPage, appliedKeyword]);
 
     useEffect(() => {
-        if (activeTab === "signal-top") {
+        if (activeTab === "signal-top" || activeTab === "compensation") {
             fetch("/api/signal-top?page=1&per_page=1")
                 .then((res) => res.json())
                 .then((data) => {
@@ -110,6 +111,7 @@ export default function AuctionPageClient() {
                     {([
                         { id: "auction-list" as TabId, label: "경매 목록", count: activeTab === "auction-list" ? total : undefined },
                         { id: "signal-top" as TabId, label: "투자 시그널" },
+                        { id: "compensation" as TabId, label: "보상 후보" },
                         { id: "minutes" as TabId, label: "회의록 검색" },
                     ]).map((tab) => (
                         <button
@@ -182,7 +184,7 @@ export default function AuctionPageClient() {
                     )}
                 </main>
             )}
-            {activeTab === "signal-top" && hotZoneAlerts.length > 0 && (
+            {(activeTab === "signal-top" || activeTab === "compensation") && hotZoneAlerts.length > 0 && (
                 <div style={{
                     padding: "14px 20px",
                     background: "#dc262610",
@@ -220,6 +222,7 @@ export default function AuctionPageClient() {
                 </div>
             )}
             {activeTab === "signal-top" && <SignalTopTab />}
+            {activeTab === "compensation" && <CompensationTab />}
             {activeTab === "minutes" && <MinutesSearchPage embedded />}
         </div>
     );
