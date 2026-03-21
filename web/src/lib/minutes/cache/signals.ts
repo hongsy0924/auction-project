@@ -246,6 +246,37 @@ export async function clearPropertyScores(excludeBatchId?: string): Promise<void
     }
 }
 
+// Map individual zone/facility terms to compensation-relevant categories.
+// 포함/저촉 columns contain comma-separated land-use zones like
+// "대공방어협조구역, 도시지역, 제2종일반주거지역, 소로3류".
+// We extract only 도시계획시설-related terms that indicate compensation potential.
+const FACILITY_CATEGORY_RULES: [RegExp, string][] = [
+    [/소로/, "도로(소로)"],
+    [/중로/, "도로(중로)"],
+    [/대로/, "도로(대로)"],
+    [/^도로구역$|^도로$/, "도로"],
+    [/근린공원|도시자연공원|소공원|어린이공원|체육공원|묘지공원|문화공원|수변공원|역사공원/, "공원"],
+    [/완충녹지|경관녹지|연결녹지|보전녹지지역/, "녹지"],
+    [/하천구역|^하천$|소하천구역|소하천예정지|^소하천$/, "하천"],
+    [/주차장/, "주차장"],
+    [/학교|교육/, "학교/교육"],
+    [/문화시설/, "문화시설"],
+    [/철도보호지구|철도/, "철도"],
+    [/유수지|저수지/, "유수지"],
+    [/시장/, "시장"],
+    [/광장/, "광장"],
+    [/하수처리/, "하수시설"],
+    [/폐기물매립시설/, "폐기물시설"],
+];
+
+function classifyFacilityTerm(term: string): string | null {
+    const cleaned = term.replace(/\([^)]*\)/g, "").trim();
+    for (const [pattern, category] of FACILITY_CATEGORY_RULES) {
+        if (pattern.test(cleaned)) return category;
+    }
+    return null;
+}
+
 export async function getFacilityTypeCounts(): Promise<{ type: string; count: number }[]> {
     await ensureInitialized();
 
@@ -259,18 +290,18 @@ export async function getFacilityTypeCounts(): Promise<{ type: string; count: nu
         []
     );
 
-    // Extract facility category from text like "소로1류(8m미만) — 도로" → "도로"
-    // Handles various dash characters: em-dash (—), en-dash (–), hyphen (-)
     const counts = new Map<string, number>();
     for (const row of rows) {
-        const categories = new Set<string>();
+        const matched = new Set<string>();
         for (const val of [row.pohaam, row.jeochok]) {
             if (!val || !val.trim()) continue;
-            const parts = val.split(/\s*[—–\-]\s*/).filter(Boolean);
-            const category = parts.length > 1 ? parts[parts.length - 1] : parts[0];
-            if (category) categories.add(category);
+            const terms = val.split(",").map((s) => s.trim()).filter(Boolean);
+            for (const term of terms) {
+                const category = classifyFacilityTerm(term);
+                if (category) matched.add(category);
+            }
         }
-        for (const cat of categories) {
+        for (const cat of matched) {
             counts.set(cat, (counts.get(cat) || 0) + 1);
         }
     }
