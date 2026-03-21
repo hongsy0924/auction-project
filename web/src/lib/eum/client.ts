@@ -106,7 +106,8 @@ export async function getEumNotices(areaCd: string): Promise<CachedEumNotice[]> 
                 break;
             }
 
-            const text = await response.text();
+            const buffer = await response.arrayBuffer();
+            const text = new TextDecoder("euc-kr").decode(buffer);
 
             // Check for error response
             const errorCode = getXmlTag(text, "ERROR_CODE");
@@ -430,7 +431,8 @@ export async function getEumRestrictions(areaCd: string): Promise<CachedEumRestr
             return [];
         }
 
-        const text = await response.text();
+        const buffer = await response.arrayBuffer();
+        const text = new TextDecoder("euc-kr").decode(buffer);
 
         const errorCode = getXmlTag(text, "ERROR_CODE");
         if (errorCode) {
