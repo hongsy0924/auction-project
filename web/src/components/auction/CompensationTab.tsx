@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import styles from "./CompensationTab.module.css";
 import {
     ChevronDown, ChevronUp, AlertTriangle, Building2,
-    Loader, Search,
+    Loader, Search, FileText,
 } from "lucide-react";
 import Pagination from "./Pagination";
 import { renderMarkdown } from "@/utils/renderMarkdown";
@@ -85,6 +85,7 @@ export default function CompensationTab() {
     const [facilityType, setFacilityType] = useState<string | null>(null);
     const [filterIncludeOnly, setFilterIncludeOnly] = useState(false);
     const [filterUnexecutedOnly, setFilterUnexecutedOnly] = useState(false);
+    const [excludeHousing, setExcludeHousing] = useState(true);
     const [facilityTypeCounts, setFacilityTypeCounts] = useState<{ type: string; count: number }[]>([]);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [analysisCache, setAnalysisCache] = useState<Record<string, string>>({});
@@ -96,7 +97,7 @@ export default function CompensationTab() {
         unexecutedCount: items.filter((i) => i.has_unexecuted === 1).length,
     }), [items, total]);
 
-    useEffect(() => { setPage(1); }, [sortBy, facilityType, filterIncludeOnly, filterUnexecutedOnly]);
+    useEffect(() => { setPage(1); }, [sortBy, facilityType, filterIncludeOnly, filterUnexecutedOnly, excludeHousing]);
 
     useEffect(() => {
         setLoading(true);
@@ -109,6 +110,7 @@ export default function CompensationTab() {
         if (facilityType) params.set("facility_type", facilityType);
         if (filterIncludeOnly) params.set("filter_include_only", "1");
         if (filterUnexecutedOnly) params.set("filter_unexecuted_only", "1");
+        if (excludeHousing) params.set("exclude_housing", "1");
 
         fetch(`/api/signal-top?${params}`)
             .then((res) => res.json())
@@ -124,7 +126,7 @@ export default function CompensationTab() {
                 setLoading(false);
             })
             .catch(() => setLoading(false));
-    }, [page, perPage, sortBy, facilityType, filterIncludeOnly, filterUnexecutedOnly]);
+    }, [page, perPage, sortBy, facilityType, filterIncludeOnly, filterUnexecutedOnly, excludeHousing]);
 
     const totalPages = Math.ceil(total / perPage);
 
@@ -226,6 +228,13 @@ export default function CompensationTab() {
                     ))}
                 </div>
                 <div style={{ display: "flex", gap: "4px" }}>
+                    <button
+                        className={`${styles.filterBtn} ${excludeHousing ? styles.filterBtnActive : ""}`}
+                        onClick={() => setExcludeHousing(!excludeHousing)}
+                    >
+                        <Building2 size={13} />
+                        주택 제외
+                    </button>
                     <button
                         className={`${styles.filterBtn} ${filterIncludeOnly ? styles.filterBtnActive : ""}`}
                         onClick={() => setFilterIncludeOnly(!filterIncludeOnly)}
@@ -329,6 +338,46 @@ export default function CompensationTab() {
                                         {item.notice_count > 0 && (
                                             <span className={styles.pill} style={{ background: "#b91c1c18", color: "#b91c1c", borderColor: "#b91c1c30", fontWeight: 600 }}>
                                                 고시 {item.notice_count}건
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Notice details (gosi matching) */}
+                                {item.notice_details && item.notice_details.length > 0 && (
+                                    <div className={styles.facilityList}>
+                                        {item.notice_details.slice(0, 5).map((n, i) => (
+                                            <span key={i} className={styles.facilityItem}>
+                                                <span style={{
+                                                    color: GOSI_STAGE_COLORS[n.gosiStage || 0] || "#b91c1c",
+                                                    fontWeight: 600,
+                                                    fontSize: "11px",
+                                                }}>
+                                                    {GOSI_STAGE_LABELS[n.gosiStage || 0] || "고시"}
+                                                </span>{" "}
+                                                {n.link ? (
+                                                    <a
+                                                        href={n.link}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ color: "inherit", textDecoration: "underline" }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {n.title.length > 70 ? n.title.slice(0, 70) + "..." : n.title}
+                                                    </a>
+                                                ) : (
+                                                    <span>{n.title.length > 70 ? n.title.slice(0, 70) + "..." : n.title}</span>
+                                                )}
+                                                {n.noticeDate && (
+                                                    <span style={{ color: "var(--text-muted)", fontSize: "11px", marginLeft: "4px" }}>
+                                                        ({n.noticeDate})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        ))}
+                                        {item.notice_details.length > 5 && (
+                                            <span className={styles.facilityItem} style={{ color: "var(--text-muted)" }}>
+                                                ... 외 {item.notice_details.length - 5}건
                                             </span>
                                         )}
                                     </div>

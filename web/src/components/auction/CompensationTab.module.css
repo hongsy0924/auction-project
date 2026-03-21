@@ -166,6 +166,10 @@
     border: 1px solid;
 }
 
+/* Facility/notice list */
+.facilityList { display: flex; flex-direction: column; gap: 2px; }
+.facilityItem { font-size: 12px; color: var(--text-muted); }
+
 /* Pills */
 .pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .pill {
