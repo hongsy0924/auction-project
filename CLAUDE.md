@@ -51,16 +51,15 @@ make deploy       # Fly.io deploy
 
 1. **Crawl**: Court auction API → PNU generation → VWorld land use (포함/저촉/접합) → VWorld land price (공시지가) → facility age (registDt) → SQLite `auction_list`
 2. **Clean**: `auction_list` → COLUMN_MAPPING → `auction_list_cleaned` (한글 columns)
-3. **Score**: Precompute reads cleaned data → EUM gosi matching → 5-factor scoring engine → `property_scores` cache
-4. **Display**: Signal-top tab shows ranked properties with score breakdown, gosi stage, price ratios
+3. **Score**: Precompute reads cleaned data → EUM gosi matching → 4-factor scoring engine → `property_scores` cache
+4. **Display**: Signal-top tab shows ranked properties with score breakdown, gosi stage; 보상 후보 tab shows 포함/저촉 filtered items with facility-type filters
 
 ## Scoring Engine (web/src/lib/scoring/)
 
-5-factor weighted score (0-1.0):
-- **facility_coverage** (0.20): 포함=1.0, 저촉=0.7, 접합=0.3
-- **facility_age** (0.10): Years since registDt (18yr+=1.0)
+4-factor weighted score (0-1.0):
+- **facility_coverage** (0.40): 포함=1.0, 저촉=0.7, 접합=0.3
+- **facility_age** (0.15): Years since registDt (18yr+=1.0)
 - **gosi_stage** (0.30): Stage 0-4 (보상=1.0, 사업인정=0.8)
-- **price_attractiveness** (0.25): 최저가/공시지가 ratio (≤0.5=1.0)
 - **timing** (0.15): 유찰 count bonus
 
 ## External APIs
