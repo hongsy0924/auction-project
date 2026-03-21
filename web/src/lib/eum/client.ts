@@ -210,19 +210,65 @@ export function filterRelevantGosi(notices: CachedEumNotice[]): CachedEumNotice[
     );
 }
 
-/** Match notices to a specific dong name via title/summary text matching. */
+export type GosiMatchType = "lot" | "ri" | "dong";
+
+interface GosiMatchResult {
+    notice: CachedEumNotice;
+    gosiStage: number;
+    matchType: GosiMatchType;
+}
+
+/**
+ * Parse address into components for gosi matching.
+ * "경기도 여주시 북내면 중암리 510" → { dong: "북내면", ri: "중암리", lot: "510" }
+ */
+export function parseAddressForMatching(address: string): {
+    dong: string;
+    ri: string;
+    lot: string;
+} {
+    const parts = address.trim().split(/\s+/);
+    let dong = "";
+    let ri = "";
+    let lot = "";
+
+    for (const p of parts) {
+        if (/[동면읍]$/.test(p) && !dong) dong = p;
+        else if (/[리가]$/.test(p) && !ri) ri = p;
+        else if (/^\d+(-\d+)?$/.test(p) && !lot) lot = p;
+        else if (/^산\d+/.test(p) && !lot) lot = p;
+    }
+    return { dong, ri, lot };
+}
+
+/**
+ * Match notices to a specific property address.
+ * Matches at ri/dong level, with lot-level precision when possible.
+ * matchType: "lot" (번지 매칭) > "ri" (리/동 매칭) > "dong" (면/읍 매칭)
+ */
 export function matchGosiToDong(
     notices: CachedEumNotice[],
     dongName: string,
-): { notice: CachedEumNotice; gosiStage: number; matchType: "title" | "address" }[] {
-    if (!dongName) return [];
-    const matches: { notice: CachedEumNotice; gosiStage: number; matchType: "title" | "address" }[] = [];
+    fullAddress?: string,
+): GosiMatchResult[] {
+    const addr = fullAddress ? parseAddressForMatching(fullAddress) : { dong: dongName, ri: "", lot: "" };
+    if (!addr.ri && !addr.dong) return [];
+
+    const matches: GosiMatchResult[] = [];
     for (const n of notices) {
         const stage = classifyGosiStage(n.title);
-        if (n.title?.includes(dongName)) {
-            matches.push({ notice: n, gosiStage: stage, matchType: "title" });
-        } else if (n.relatedAddress?.includes(dongName)) {
-            matches.push({ notice: n, gosiStage: stage, matchType: "address" });
+        const searchText = `${n.title || ""} ${n.relatedAddress || ""}`;
+
+        // Try most specific match first
+        if (addr.lot && addr.ri && searchText.includes(addr.ri) && searchText.includes(addr.lot)) {
+            matches.push({ notice: n, gosiStage: stage, matchType: "lot" });
+        } else if (addr.ri && searchText.includes(addr.ri)) {
+            matches.push({ notice: n, gosiStage: stage, matchType: "ri" });
+        } else if (addr.dong && searchText.includes(addr.dong)) {
+            // dong-level match only for stage 3+ (사업인정/보상) — broad area impact
+            if (stage >= 3) {
+                matches.push({ notice: n, gosiStage: stage, matchType: "dong" });
+            }
         }
     }
     return matches;

@@ -167,10 +167,10 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
             const permits = eumData?.permits || [];
             const restrictions = eumData?.restrictions || [];
 
-            // Gosi matching: filter relevant notices, then match to this property's dong
+            // Gosi matching: filter relevant notices, then match to this property's address
             const relevantGosi = filterRelevantGosi(notices);
             const dongName = location.dong || String(item["동"] || "");
-            const gosiMatches = matchGosiToDong(relevantGosi, dongName);
+            const gosiMatches = matchGosiToDong(relevantGosi, dongName, address);
             const maxGosiStage = gosiMatches.length > 0
                 ? Math.max(...gosiMatches.map((m) => m.gosiStage))
                 : 0;

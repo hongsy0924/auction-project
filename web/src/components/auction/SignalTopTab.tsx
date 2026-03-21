@@ -390,13 +390,17 @@ export default function SignalTopTab() {
                                             <span
                                                 className={styles.pill}
                                                 style={{
-                                                    background: "#dc262618",
-                                                    color: "#dc2626",
-                                                    borderColor: "#dc262630",
+                                                    background: item.notice_details?.some((n: NoticeDetail) => n.matchType === "lot")
+                                                        ? "#dc262618" : "#ea580c18",
+                                                    color: item.notice_details?.some((n: NoticeDetail) => n.matchType === "lot")
+                                                        ? "#dc2626" : "#ea580c",
+                                                    borderColor: item.notice_details?.some((n: NoticeDetail) => n.matchType === "lot")
+                                                        ? "#dc262630" : "#ea580c30",
                                                     fontWeight: 600,
                                                 }}
                                             >
-                                                필지 매칭
+                                                {item.notice_details?.some((n: NoticeDetail) => n.matchType === "lot")
+                                                    ? "번지 매칭" : "리/동 매칭"}
                                             </span>
                                         )}
                                     </div>
