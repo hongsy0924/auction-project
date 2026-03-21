@@ -5,6 +5,7 @@ import styles from "./SignalTopTab.module.css";
 import {
     FileText, ChevronDown, ChevronUp,
     AlertTriangle, Building2, Loader, Search,
+    HelpCircle, X,
 } from "lucide-react";
 import Pagination from "./Pagination";
 import { renderMarkdown } from "@/utils/renderMarkdown";
@@ -118,8 +119,9 @@ export default function SignalTopTab() {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [analysisCache, setAnalysisCache] = useState<Record<string, string>>({});
     const [analysisLoading, setAnalysisLoading] = useState<string | null>(null);
+    const [showHelp, setShowHelp] = useState(false);
 
-    type SortKey = "score" | "facility" | "compensation" | "price_ratio" | "facility_age" | "gosi_stage";
+    type SortKey = "score" | "facility" | "compensation" | "facility_age" | "gosi_stage";
     const [sortBy, setSortBy] = useState<SortKey>("score");
     const [filterCompensation, setFilterCompensation] = useState(false);
     const [excludeHousing, setExcludeHousing] = useState(true);
@@ -232,16 +234,121 @@ export default function SignalTopTab() {
                 </div>
             </div>
 
+            {/* Help modal */}
+            {showHelp && (
+                <div className={styles.helpOverlay} onClick={() => setShowHelp(false)}>
+                    <div className={styles.helpModal} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.helpHeader}>
+                            <span>시그널 용어 안내</span>
+                            <button className={styles.helpClose} onClick={() => setShowHelp(false)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className={styles.helpBody}>
+                            <div className={styles.helpSection}>
+                                <h4>키워드 태그</h4>
+                                <p className={styles.helpSectionDesc}>지방의회 회의록에서 해당 지역과 관련된 키워드가 언급된 횟수를 기반으로 표시됩니다.</p>
+                                <dl className={styles.helpList}>
+                                    <dt><span className={styles.helpPill} style={{ background: "#dc262618", color: "#dc2626", borderColor: "#dc262630" }}>보상</span></dt>
+                                    <dd>토지 수용에 따른 보상 관련 논의가 회의록에 등장. 보상 절차가 진행 중이거나 예정된 지역일 가능성이 높습니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#dc262618", color: "#dc2626", borderColor: "#dc262630" }}>수용</span></dt>
+                                    <dd>공익사업을 위한 토지 수용 관련 논의. 보상과 함께 나타나는 경우가 많으며, 사업 추진이 구체화된 단계를 시사합니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#ea580c18", color: "#ea580c", borderColor: "#ea580c30" }}>편입</span></dt>
+                                    <dd>도로·공원 등 도시계획시설에 토지가 편입 예정이거나 편입된 상태. 향후 보상 가능성이 있는 핵심 시그널입니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#2563eb18", color: "#2563eb", borderColor: "#2563eb30" }}>도시계획</span></dt>
+                                    <dd>도시계획 변경·결정 관련 논의. 용도지역 변경, 지구단위계획 등 토지 가치에 영향을 주는 계획이 논의되고 있음을 의미합니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#05966918", color: "#059669", borderColor: "#05966930" }}>착공</span></dt>
+                                    <dd>도시계획시설 공사 착공 관련 논의. 실제 사업이 시작되는 단계로, 보상이 임박했거나 진행 중일 수 있습니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#7c3aed18", color: "#7c3aed", borderColor: "#7c3aed30" }}>개발</span></dt>
+                                    <dd>지역 개발사업(택지개발, 재개발 등) 관련 논의. 광범위한 토지 가치 변동 가능성을 시사합니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#0891b218", color: "#0891b2", borderColor: "#0891b230" }}>도로</span></dt>
+                                    <dd>도로 개설·확장 관련 논의. 도로에 저촉된 토지는 보상 대상이 될 수 있습니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#ca8a0418", color: "#ca8a04", borderColor: "#ca8a0430" }}>택지</span></dt>
+                                    <dd>택지개발 관련 논의. 대규모 토지 수용과 보상이 수반되는 사업입니다.</dd>
+                                </dl>
+                            </div>
+
+                            <div className={styles.helpSection}>
+                                <h4>고시/인허가 태그</h4>
+                                <p className={styles.helpSectionDesc}>토지이음(EUM) 시스템에서 조회한 해당 지역의 공식 고시·인허가 정보입니다.</p>
+                                <dl className={styles.helpList}>
+                                    <dt><span className={styles.helpPill} style={{ background: "#b91c1c18", color: "#b91c1c", borderColor: "#b91c1c30", fontWeight: 600 }}>고시 N건</span></dt>
+                                    <dd>해당 지역에 관련된 정부/지자체 고시 건수. 도시계획시설 결정, 실시계획 인가, 사업인정 등이 포함됩니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#7c3aed18", color: "#7c3aed", borderColor: "#7c3aed30", fontWeight: 600 }}>인허가 N건</span></dt>
+                                    <dd>개발행위 허가, 건축허가 등 해당 지역의 인허가 건수. 주변 개발 활동의 활발도를 나타냅니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#dc262618", color: "#dc2626", borderColor: "#dc262630", fontWeight: 600 }}>번지 매칭</span></dt>
+                                    <dd>고시가 해당 물건의 정확한 번지와 일치. 해당 토지가 사업에 직접 포함될 가능성이 매우 높습니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#ea580c18", color: "#ea580c", borderColor: "#ea580c30", fontWeight: 600 }}>리/동 매칭</span></dt>
+                                    <dd>고시가 같은 리/동 단위에서 매칭. 번지 매칭보다는 약하지만 인근 사업의 영향권에 있음을 의미합니다.</dd>
+                                </dl>
+                            </div>
+
+                            <div className={styles.helpSection}>
+                                <h4>사업 단계 (고시 기반)</h4>
+                                <p className={styles.helpSectionDesc}>토지이음 고시 정보를 기반으로 파악한 사업 진행 단계입니다. 단계가 높을수록 보상 시점이 가깝습니다.</p>
+                                <dl className={styles.helpList}>
+                                    <dt><span className={styles.helpPill} style={{ background: "#2563eb15", color: "#2563eb", borderColor: "#2563eb40" }}>결정</span></dt>
+                                    <dd>도시계획시설 결정 고시 단계. 시설 설치가 결정되었으나 구체적 실행 계획은 아직 없는 초기 단계입니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#7c3aed15", color: "#7c3aed", borderColor: "#7c3aed40" }}>실시계획</span></dt>
+                                    <dd>실시계획 인가 단계. 구체적인 사업 설계가 완료되어 실행 준비가 된 상태입니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#ea580c15", color: "#ea580c", borderColor: "#ea580c40" }}>사업인정</span></dt>
+                                    <dd>사업인정 고시 단계. 토지 수용권이 부여되어 보상 협의가 시작될 수 있는 단계입니다.</dd>
+                                    <dt><span className={styles.helpPill} style={{ background: "#dc262615", color: "#dc2626", borderColor: "#dc262640" }}>보상</span></dt>
+                                    <dd>보상 단계. 토지 보상 협의 또는 수용 재결이 진행 중인 최종 단계입니다.</dd>
+                                </dl>
+                            </div>
+
+                            <div className={styles.helpSection}>
+                                <h4>상태 배지</h4>
+                                <dl className={styles.helpList}>
+                                    <dt><span className={styles.helpInlineBadge} style={{ background: "#fee2e2", color: "#dc2626" }}>보상 시그널</span></dt>
+                                    <dd>회의록, 고시, 시설 정보를 종합했을 때 보상 가능성이 높다고 판단된 물건입니다.</dd>
+                                    <dt><span className={styles.helpInlineBadge} style={{ background: "#fef3c7", color: "#92400e" }}>미집행</span></dt>
+                                    <dd>도시계획시설로 결정되었으나 아직 집행(공사)이 되지 않은 상태. 장기 미집행 시설은 실효 또는 보상 대상이 됩니다.</dd>
+                                </dl>
+                            </div>
+
+                            <div className={styles.helpSection}>
+                                <h4>점수 구성 (4가지 요소)</h4>
+                                <p className={styles.helpSectionDesc}>각 물건의 투자 매력도를 0~100%로 환산한 4가지 요소의 종합 점수입니다.</p>
+                                <dl className={styles.helpList}>
+                                    <dt><span style={{ color: "#2563eb", fontWeight: 700 }}>시설저촉 (40%)</span></dt>
+                                    <dd>도시계획시설과의 관계. 포함(100점) &gt; 저촉(70점) &gt; 접합(30점) 순으로 점수가 높습니다.</dd>
+                                    <dt><span style={{ color: "#7c3aed", fontWeight: 700 }}>경과연수 (15%)</span></dt>
+                                    <dd>도시계획시설 결정 후 경과 기간. 18년 이상이면 만점으로, 장기 미집행 실효 대상 가능성을 반영합니다.</dd>
+                                    <dt><span style={{ color: "#dc2626", fontWeight: 700 }}>사업단계 (30%)</span></dt>
+                                    <dd>고시 기반 사업 진행도. 보상 단계(100점)가 가장 높고, 결정 단계로 갈수록 낮아집니다.</dd>
+                                    <dt><span style={{ color: "#059669", fontWeight: 700 }}>유찰 (15%)</span></dt>
+                                    <dd>유찰 횟수에 따른 가격 하락 보너스. 유찰이 많을수록 저가 매수 기회를 의미합니다.</dd>
+                                </dl>
+                            </div>
+
+                            <div className={styles.helpSection}>
+                                <h4>시설 관계 유형</h4>
+                                <dl className={styles.helpList}>
+                                    <dt><span style={{ fontWeight: 600 }}>포함</span></dt>
+                                    <dd>토지가 도시계획시설 부지에 완전히 포함. 사업 시행 시 전체 보상 대상입니다.</dd>
+                                    <dt><span style={{ fontWeight: 600 }}>저촉</span></dt>
+                                    <dd>토지 일부가 시설 부지에 걸침. 저촉 부분에 대해 보상이 이뤄집니다.</dd>
+                                    <dt><span style={{ fontWeight: 600 }}>접합</span></dt>
+                                    <dd>토지가 시설 부지에 인접. 직접 보상 대상은 아니지만 주변 개발 수혜를 기대할 수 있습니다.</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Sort/Filter controls */}
             <div className={styles.controls}>
                 <div className={styles.sortGroup}>
-                    {(["score", "price_ratio", "facility_age", "gosi_stage", "facility", "compensation"] as SortKey[]).map((key) => (
+                    {(["score", "facility_age", "gosi_stage", "facility", "compensation"] as SortKey[]).map((key) => (
                         <button
                             key={key}
                             className={`${styles.sortBtn} ${sortBy === key ? styles.sortBtnActive : ""}`}
                             onClick={() => setSortBy(key)}
                         >
-                            {key === "score" ? "점수순" : key === "facility" ? "시설순" : key === "compensation" ? "보상순" : key === "price_ratio" ? "공시지가비율" : key === "facility_age" ? "경과연수" : "사업단계"}
+                            {key === "score" ? "점수순" : key === "facility" ? "시설순" : key === "compensation" ? "보상순" : key === "facility_age" ? "경과연수" : "사업단계"}
                         </button>
                     ))}
                 </div>
@@ -258,6 +365,13 @@ export default function SignalTopTab() {
                 >
                     <AlertTriangle size={13} />
                     보상대상만
+                </button>
+                <button
+                    className={styles.helpBtn}
+                    onClick={() => setShowHelp(true)}
+                    title="시그널 용어 안내"
+                >
+                    <HelpCircle size={16} />
                 </button>
             </div>
 
@@ -444,7 +558,6 @@ export default function SignalTopTab() {
                                             ["facility_coverage", "시설저촉", "#2563eb"],
                                             ["facility_age", "경과연수", "#7c3aed"],
                                             ["gosi_stage", "사업단계", "#dc2626"],
-                                            ["price_attractiveness", "가격매력", "#ea580c"],
                                             ["timing", "유찰", "#059669"],
                                         ] as [string, string, string][]).map(([key, label, color]) => {
                                             const comp = item.score_breakdown?.[key];
