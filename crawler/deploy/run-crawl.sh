@@ -85,7 +85,10 @@ if command -v flyctl &> /dev/null && [ -n "${FLY_API_TOKEN:-}" ]; then
     flyctl ssh sftp shell -a "$FLY_APP" <<SFTP
 put $OUTPUT_DB /data/auction_data.db
 SFTP
-    
+
+    # sftp creates files as root:644 — make writable so Next.js can update scores/cache
+    flyctl ssh console -a "$FLY_APP" -C "chmod 666 /data/auction_data.db" 2>/dev/null || true
+
     echo "$LOG_PREFIX DB transfer to Fly.io complete."
 else
     echo "$LOG_PREFIX ⚠️ flyctl not found or FLY_API_TOKEN not set. Skipping transfer."
@@ -106,6 +109,9 @@ if [ -f "$CACHE_DB" ] && command -v flyctl &> /dev/null && [ -n "${FLY_API_TOKEN
     flyctl ssh sftp shell -a "$FLY_APP" <<SFTP
 put $CACHE_DB /data/minutes_cache.db
 SFTP
+
+    flyctl ssh console -a "$FLY_APP" -C "chmod 666 /data/minutes_cache.db" 2>/dev/null || true
+
     echo "$LOG_PREFIX minutes_cache.db transfer complete."
 else
     echo "$LOG_PREFIX Skipping minutes_cache.db transfer."
