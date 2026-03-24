@@ -394,6 +394,11 @@ export async function getHotZoneAlerts(): Promise<CachedHotZoneAlert[]> {
     );
 }
 
+export async function clearHotZoneAlerts(): Promise<void> {
+    await ensureInitialized();
+    await runAsync("DELETE FROM hot_zone_alerts WHERE reviewed = 0");
+}
+
 export async function setHotZoneAlerts(alerts: CachedHotZoneAlert[]): Promise<void> {
     await ensureInitialized();
     if (alerts.length === 0) return;

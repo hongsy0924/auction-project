@@ -18,7 +18,7 @@ import {
 } from "@/lib/eum/client";
 import type { CachedEumNotice, CachedEumPermit, CachedEumRestriction } from "@/lib/minutes/cache";
 import { scoreItem } from "@/lib/scoring/precompute";
-import { setHotZoneAlerts } from "@/lib/minutes/cache";
+import { setHotZoneAlerts, clearHotZoneAlerts } from "@/lib/minutes/cache";
 import { reverseMatchHotZones } from "@/lib/eum/reverse-match";
 
 export const dynamic = "force-dynamic";
@@ -265,6 +265,8 @@ async function processAllItems(batchId: string, forceRefresh: boolean = false) {
     }
 
     // Reverse match hot zones with scored items
+    // Clear stale alerts before writing fresh ones
+    await clearHotZoneAlerts();
     if (allHotZones.length > 0) {
         try {
             const scoredItems = await getPropertyScores({ limit: 200 });
