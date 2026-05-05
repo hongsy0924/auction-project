@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import traceback
 from typing import Any, List, Set
 
 from tqdm import tqdm
@@ -53,8 +54,8 @@ class CrawlPipeline:
 
         except Exception as e:
             logger.error(f"최상위 오류 발생: {e}")
-            import traceback
             traceback.print_exc()
+            raise
         finally:
             # 브라우저 종료
             await self.fetcher.close()
@@ -74,10 +75,7 @@ class CrawlPipeline:
 
             if not page_info or 'totalCnt' not in page_info:
                 logger.error("전체 페이지 수를 가져올 수 없습니다.")
-                if auctions:
-                    self.all_auctions.extend(auctions)
-                    await save_auction_data(self.all_auctions)
-                return None
+                raise RuntimeError("전체 페이지 수를 가져올 수 없습니다.")
 
             total_cnt = int(page_info['totalCnt'])
             page_size = int(page_info['pageSize'])
@@ -91,7 +89,7 @@ class CrawlPipeline:
 
         except Exception as e:
             logger.error(f"첫 페이지를 가져오는 데 실패했습니다: {e}")
-            return None
+            raise
 
     async def _fetch_remaining_pages(self, total_pages: int) -> None:
         """나머지 페이지들을 크롤링 (Sequential for Browser Safety)"""
@@ -184,7 +182,7 @@ class CrawlPipeline:
 
         if not self.all_auctions:
             logger.error("경매 목록을 가져오지 못했습니다.")
-            self.all_auctions = [] # Ensure it's a list even if empty
+            raise RuntimeError("경매 목록을 가져오지 못했습니다.")
 
         total_cnt = self._total_cnt
         actual_count = len(self.all_auctions)

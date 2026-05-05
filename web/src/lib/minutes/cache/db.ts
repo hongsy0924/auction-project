@@ -24,16 +24,36 @@ export const GOSI_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 let db: sqlite3.Database | null = null;
 let initialized = false;
+let cacheDbSignature: string | null = null;
+
+function getFileSignature(filePath: string): string | null {
+    if (!fs.existsSync(filePath)) return null;
+    const stat = fs.statSync(filePath);
+    return `${stat.dev}:${stat.ino}`;
+}
 
 export function getDb(): sqlite3.Database {
-    if (db) return db;
-
     const dir = path.dirname(CACHE_DB_PATH);
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
 
+    const currentSignature = getFileSignature(CACHE_DB_PATH);
+    if (db) {
+        if (cacheDbSignature === currentSignature) {
+            return db;
+        }
+
+        db.close((err) => {
+            if (err) console.error("Failed to close stale cache DB connection:", err);
+        });
+        db = null;
+        initialized = false;
+        console.log("Cache DB file changed; reopening connection.");
+    }
+
     db = new sqlite3.Database(CACHE_DB_PATH);
+    cacheDbSignature = getFileSignature(CACHE_DB_PATH);
     return db;
 }
 

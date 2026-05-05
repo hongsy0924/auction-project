@@ -1,5 +1,5 @@
 # Auction Crawler - Crontab
-# 매일 오전 5시 KST (= UTC 20:00)에 크롤링 실행
-# 설치: crontab /home/opc/auction-project/crawler/deploy/crontab
+# 매일 오전 5시 KST에 크롤링 실행 (NCP 서버 로컬 시간이 KST라고 가정)
+# 설치: crontab /home/crawler/auction-project/crawler/deploy/crontab
 
-0 20 * * * /home/opc/auction-project/crawler/deploy/run-crawl.sh >> /home/opc/crawler.log 2>&1
+0 5 * * * /home/crawler/auction-project/crawler/deploy/run-crawl.sh >> /home/crawler/crawler.log 2>&1

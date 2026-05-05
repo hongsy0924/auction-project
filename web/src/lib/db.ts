@@ -39,14 +39,29 @@ const TABLE_NAME = "auction_list_cleaned";
 // Global variable to hold the database instance in development
 // producing a singleton similar to Prisma's recommended pattern for Next.js
 let dbInstance: sqlite3.Database | null = null;
+let dbSignature: string | null = null;
+
+function getFileSignature(filePath: string): string {
+    const stat = fs.statSync(filePath);
+    return `${stat.dev}:${stat.ino}`;
+}
 
 function getDatabase(): sqlite3.Database {
-    if (dbInstance) {
-        return dbInstance;
-    }
-
     if (!fs.existsSync(DB_PATH)) {
         throw new Error(`DB 파일이 존재하지 않습니다: ${DB_PATH}`);
+    }
+
+    const currentSignature = getFileSignature(DB_PATH);
+    if (dbInstance) {
+        if (dbSignature === currentSignature) {
+            return dbInstance;
+        }
+
+        dbInstance.close((err) => {
+            if (err) console.error("Failed to close stale database connection:", err);
+        });
+        dbInstance = null;
+        console.log("Database file changed; reopening connection.");
     }
 
     // Initialize the database connection
@@ -55,6 +70,7 @@ function getDatabase(): sqlite3.Database {
             console.error("Failed to connect to database:", err);
             // If connection fails, ensure we don't keep a broken instance
             dbInstance = null;
+            dbSignature = null;
         } else {
             console.log("New database connection established.");
         }
@@ -64,6 +80,7 @@ function getDatabase(): sqlite3.Database {
     // In production, you might want different handling, but for SQLite file access,
     // a single connection is usually fine and preferred to avoid locking.
     dbInstance = db;
+    dbSignature = currentSignature;
     return db;
 }
 
